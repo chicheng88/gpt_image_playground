@@ -244,6 +244,8 @@ export default function SettingsModal() {
   const activeProfile = draft.profiles.find((profile) => profile.id === draft.activeProfileId) ?? draft.profiles[0] ?? getActiveApiProfile(draft)
   const activePresetDescription = getPresetProfileDescription(activeProfile.id)
   const activeProfileLocked = isPresetProfileLocked(activeProfile.id)
+  // 只允许使用预置配置且参数已锁定时，除 API Key 外的字段既不可修改也无需展示
+  const hideLockedPresetFields = presetConfigOnly && activeProfileLocked
   const activeProviderIsOpenAICompatible = isOpenAICompatibleProvider(draft, activeProfile.provider)
   const activeProviderUsesApiUrl = activeProviderIsOpenAICompatible || activeProfile.provider === 'fal'
   const activeCustomProvider = getCustomProviderDefinition(draft, activeProfile.provider)
@@ -1463,6 +1465,7 @@ export default function SettingsModal() {
                   )}
                 </div>
 
+              {!hideLockedPresetFields && <>
               {/* 1. 配置名称 */}
               <label className="block">
                 <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">配置名称</span>
@@ -1540,6 +1543,7 @@ export default function SettingsModal() {
                   </div>
                 </div>
               )}
+              </>}
 
               {/* 5. API Key */}
               <div className="block">
@@ -1575,10 +1579,13 @@ export default function SettingsModal() {
                   </button>
                 </div>
                 <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
-                  支持通过链接参数导入：<code className="bg-gray-100 dark:bg-white/[0.06] px-1 py-0.5 rounded">?apiKey=</code>
+                  {hideLockedPresetFields
+                    ? '当前配置由部署端预置并锁定，只需填写 API Key。'
+                    : <>支持通过链接参数导入：<code className="bg-gray-100 dark:bg-white/[0.06] px-1 py-0.5 rounded">?apiKey=</code></>}
                 </div>
               </div>
 
+              {!hideLockedPresetFields && <>
               {/* 6. API 接口（Images/Responses） */}
               {activeProfile.provider === 'openai' && (
                 <div className="block">
@@ -1813,6 +1820,7 @@ export default function SettingsModal() {
                   />
                 </label>
               )}
+              </>}
             </div>
             )}
             

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, stopBatchPrompts, addImageFromFile, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
+import { deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
 import { DEFAULT_PARAMS, MAX_INPUT_IMAGES, type TaskRecord } from '../types'
 import { getActiveAgentRounds } from '../lib/agentConversationState'
 import { getActiveApiProfile, getAgentImageApiProfile, normalizeSettings, resolveApiProfileModel, splitModelList } from '../lib/apiProfiles'
@@ -470,8 +470,6 @@ export default function InputBar() {
   const batchRunning = Boolean(batchProgress)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning && !batchRunning)
   const batchEnabled = appMode === 'gallery' && settings.showBatchPrompt && settings.batchPromptEnabled
-  // 批量进行中始终在画廊显示入口，以便查看进度和停止
-  const showBatch = appMode === 'gallery' && (settings.showBatchPrompt || batchRunning)
   const batchPromptCount = useMemo(() => batchEnabled ? splitBatchPrompts(prompt).length : 0, [batchEnabled, prompt])
   const submitButtonAriaLabel = activeAgentIsRunning
     ? '停止生成'
@@ -1710,15 +1708,6 @@ export default function InputBar() {
       sizeHint={sizeHint}
       qualityHint={qualityHint}
       onOpenSizePicker={() => setShowSizePicker(true)}
-      showBatch={showBatch}
-      batchEnabled={batchEnabled}
-      batchMode={settings.batchPromptMode}
-      batchConcurrencyLimited={settings.batchPromptConcurrencyLimited}
-      batchConcurrency={settings.batchPromptConcurrency}
-      batchPromptCount={batchPromptCount}
-      batchProgress={batchProgress}
-      onBatchChange={setSettings}
-      onStopBatch={stopBatchPrompts}
     />
   )
 

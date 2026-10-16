@@ -140,7 +140,7 @@ export default function GeneralSettingsTab({
             </button>
           </div>
           <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-            开启后，首页参数栏会显示“批量”选项，可将空两行分隔的多条提示词一次提交，支持排队或并发执行。
+            开启后，可将空两行分隔的多条提示词一次提交，支持排队或并发执行。
           </div>
         </div>
         <div className="block">
