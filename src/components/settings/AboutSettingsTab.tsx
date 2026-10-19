@@ -190,21 +190,6 @@ export default function AboutSettingsTab({ onOpenFontLicenses }: { onOpenFontLic
         />
       </AboutCard>
 
-      <div className="overflow-hidden rounded-2xl border border-transparent bg-black/[0.04] dark:bg-white/[0.06]">
-        <AboutRow
-          highlight
-          icon={(
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          )}
-          title="一分钱生图"
-          subtitle="低至 ¥0.01 / 张 · 限时特惠，点击开通"
-          href="https://capi.vabrin.com/"
-          right={EXTERNAL}
-        />
-      </div>
-
       <AboutCard
         icon={(
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

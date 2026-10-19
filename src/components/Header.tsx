@@ -2,35 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { setUpdateModalOpen, useReleaseUpdates } from '../hooks/useReleaseUpdates'
 import { useTooltip } from '../hooks/useTooltip'
-import { detectOs } from '../lib/announcements'
-import { isTauri } from '../lib/platform'
-import { RELEASES_PAGE_URL, shouldShowUpdate } from '../lib/releaseUpdates'
+import { shouldShowUpdate } from '../lib/releaseUpdates'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
 import HistoryModal from './HistoryModal'
 import { useFavoriteCollectionTitle } from './FavoriteCollections'
-import { DesktopDownloadIcon, EditIcon, HelpCircleIcon, HistoryIcon, InstallIcon, SettingsIcon } from './icons'
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
-}
-
-// 客户端目前只有 Windows 版，只向网页版的 Windows 用户显示下载入口
-const SHOW_CLIENT_DOWNLOAD = !isTauri
-  && detectOs(navigator.userAgent, (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform, navigator.maxTouchPoints) === 'windows'
-
-function isInstalledPwa() {
-  const nav = window.navigator as Navigator & { standalone?: boolean }
-  return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true
-}
+import { EditIcon, HelpCircleIcon, HistoryIcon, SettingsIcon } from './icons'
 
 export default function Header() {
   const appMode = useStore((s) => s.appMode)
   const setAppMode = useStore((s) => s.setAppMode)
   const setShowSettings = useStore((s) => s.setShowSettings)
-  const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const agentMobileHeaderVisible = useStore((s) => s.agentMobileHeaderVisible)
   const agentConversations = useStore((s) => s.agentConversations)
   const activeAgentConversationId = useStore((s) => s.activeAgentConversationId)
@@ -42,8 +25,6 @@ export default function Header() {
   const latestRelease = useReleaseUpdates((s) => s.releases[0])
   const hasUpdate = useReleaseUpdates((s) => shouldShowUpdate(s.releases[0], __APP_VERSION__, s.ignoredVersion))
   const [showHelp, setShowHelp] = useState(false)
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [isPwaInstalled, setIsPwaInstalled] = useState(isInstalledPwa)
   const [hintVisible, setHintVisible] = useState(false)
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up')
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -91,67 +72,8 @@ export default function Header() {
     }
   }, [appMode, agentMobileHeaderVisible])
 
-  const installTooltip = useTooltip()
-  const clientTooltip = useTooltip()
   const helpTooltip = useTooltip()
   const settingsTooltip = useTooltip()
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPrompt(event as BeforeInstallPromptEvent)
-      setIsPwaInstalled(false)
-    }
-
-    const handleAppInstalled = () => {
-      setInstallPrompt(null)
-      setIsPwaInstalled(true)
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    window.addEventListener('appinstalled', handleAppInstalled)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-      window.removeEventListener('appinstalled', handleAppInstalled)
-    }
-  }, [])
-
-  const handleInstallClick = async () => {
-    if (installPrompt) {
-      const promptEvent = installPrompt
-      setInstallPrompt(null)
-
-      try {
-        await promptEvent.prompt()
-        const choice = await promptEvent.userChoice
-        setIsPwaInstalled(choice.outcome === 'accepted')
-      } catch {
-        setIsPwaInstalled(isInstalledPwa())
-      }
-    } else {
-      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-      if (isIos) {
-        setConfirmDialog({
-          title: '安装为应用',
-          message: '在 Safari 浏览器中，点击底部「分享」按钮，选择「添加到主屏幕」即可安装此应用。',
-          showCancel: false,
-          confirmText: '我知道了',
-          icon: 'info',
-          action: () => {},
-        })
-      } else {
-        setConfirmDialog({
-          title: '安装为应用',
-          message: '请在浏览器的菜单中选择「添加到主屏幕」或「安装应用」。\n\n（如果在微信等内置浏览器中，请先在外部浏览器打开）',
-          showCancel: false,
-          confirmText: '我知道了',
-          icon: 'info',
-          action: () => {},
-        })
-      }
-    }
-  }
 
   return (
     <>
@@ -250,48 +172,18 @@ export default function Header() {
             </button>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {/* 客户端本身就是安装版，不显示 PWA 安装入口 */}
-            {!isTauri && !isPwaInstalled && (
-              <div
-                className="relative"
-                {...installTooltip.handlers}
-              >
-                <button
-                  onClick={() => {
-                    dismissAllTooltips()
-                    handleInstallClick()
-                  }}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                  aria-label="安装为应用"
-                >
-                  <InstallIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                </button>
-                <ViewportTooltip visible={installTooltip.visible} className="whitespace-nowrap">
-                  安装为应用
-                </ViewportTooltip>
-              </div>
-            )}
-            {/* 窄屏时按钮区空间不足，同样不显示 */}
-            {SHOW_CLIENT_DOWNLOAD && (
-              <div
-                className="relative hidden sm:block"
-                {...clientTooltip.handlers}
-              >
-                <a
-                  href={`${RELEASES_PAGE_URL}/latest`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => dismissAllTooltips()}
-                  className="block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                  aria-label="下载客户端"
-                >
-                  <DesktopDownloadIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                </a>
-                <ViewportTooltip visible={clientTooltip.visible} className="whitespace-nowrap">
-                  下载客户端
-                </ViewportTooltip>
-              </div>
-            )}
+            <a
+              href="https://capi.vabrin.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 rounded-full bg-gradient-to-r from-orange-500 to-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-opacity hover:opacity-90"
+              title="一分钱生图 · 低至 ¥0.01 / 张 · 限时特惠，点击开通"
+            >
+              <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="whitespace-nowrap">一分钱生图</span>
+            </a>
             <div
               className="relative"
               {...helpTooltip.handlers}
