@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import type { ApiKeyEntry, ApiProfile, AppSettings } from '../../types'
-import MarkdownRenderer from '../MarkdownRenderer'
 import { TrashIcon } from '../icons'
 
 interface ApiKeySettingsTabProps {
   draft: AppSettings
-  presetDescription?: string
   commitSettings: (nextDraft: AppSettings) => void
 }
 
@@ -45,7 +43,7 @@ function collectKeys(profiles: ApiProfile[]) {
   return [...seen.values()]
 }
 
-export default function ApiKeySettingsTab({ draft, presetDescription, commitSettings }: ApiKeySettingsTabProps) {
+export default function ApiKeySettingsTab({ draft, commitSettings }: ApiKeySettingsTabProps) {
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [showKeys, setShowKeys] = useState(false)
   const multiple = draft.profiles.length > 1
@@ -132,15 +130,6 @@ export default function ApiKeySettingsTab({ draft, presetDescription, commitSett
 
   return (
     <div className="space-y-4">
-      {presetDescription && (
-        <div data-selectable-text className="flex items-start gap-3 rounded-xl border border-transparent bg-black/[0.04] px-3.5 py-3 text-sm leading-6 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
-          <svg className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <MarkdownRenderer content={presetDescription} className="min-w-0 flex-1" />
-        </div>
-      )}
-
       {groups.map((group) => {
         const keys = collectKeys(group.profiles)
         return (
