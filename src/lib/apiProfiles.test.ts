@@ -1736,3 +1736,60 @@ describe('model list', () => {
     expect(getActiveApiProfile({ profiles: [profile], activeProfileId: 'p1' }).model).toBe('b')
   })
 })
+
+describe('api key entries', () => {
+  it('migrates a legacy single key into the list', () => {
+    const profile = normalizeApiProfile({ id: 'p1', apiKey: 'sk-legacy' })
+    expect(profile.apiKey).toBe('sk-legacy')
+    expect(profile.apiKeys).toEqual([{ id: 'api-key', key: 'sk-legacy' }])
+    expect(profile.activeApiKeyId).toBe('api-key')
+  })
+
+  it('keeps every saved key and the active one', () => {
+    const profile = normalizeApiProfile({
+      id: 'p1',
+      apiKey: 'sk-b',
+      apiKeys: [{ id: 'a', key: 'sk-a' }, { id: 'b', key: 'sk-b' }],
+      activeApiKeyId: 'b',
+    })
+    expect(profile.apiKeys?.map((entry) => entry.key)).toEqual(['sk-a', 'sk-b'])
+    expect(profile.activeApiKeyId).toBe('b')
+    expect(profile.apiKey).toBe('sk-b')
+  })
+
+  it('falls back to the first key when the active id is unknown', () => {
+    const profile = normalizeApiProfile({
+      id: 'p1',
+      apiKeys: [{ id: 'a', key: 'sk-a' }, { id: 'b', key: 'sk-b' }],
+      activeApiKeyId: 'missing',
+    })
+    expect(profile.activeApiKeyId).toBe('a')
+    expect(profile.apiKey).toBe('sk-a')
+  })
+
+  it('syncs a key written without the list, such as from an import link', () => {
+    const profile = normalizeApiProfile({
+      id: 'p1',
+      apiKey: 'sk-new',
+      apiKeys: [{ id: 'a', key: 'sk-a' }],
+      activeApiKeyId: 'a',
+    })
+    expect(profile.apiKeys).toEqual([{ id: 'a', key: 'sk-new' }])
+    expect(profile.apiKey).toBe('sk-new')
+  })
+
+  it('drops empty and duplicated keys', () => {
+    const profile = normalizeApiProfile({
+      id: 'p1',
+      apiKeys: [{ id: 'a', key: 'sk-a' }, { id: 'b', key: '' }, { id: 'c', key: 'sk-a' }],
+    })
+    expect(profile.apiKeys).toEqual([{ id: 'a', key: 'sk-a' }])
+  })
+
+  it('has no key list without any key', () => {
+    const profile = normalizeApiProfile({ id: 'p1' })
+    expect(profile.apiKey).toBe('')
+    expect(profile.apiKeys).toBeUndefined()
+    expect(profile.activeApiKeyId).toBeUndefined()
+  })
+})

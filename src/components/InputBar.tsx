@@ -475,11 +475,11 @@ export default function InputBar() {
     ? '停止生成'
     : hasSubmitApiConfig
     ? maskDraft ? '遮罩编辑' : batchEnabled ? `批量生成 ${batchPromptCount} 条` : '生成图像'
-    : '请先配置 API'
+    : '请先填写 API Key'
   const submitTooltipText = activeAgentIsRunning
     ? '停止生成'
     : !hasSubmitApiConfig
-    ? '尚未完成 API 配置，请在右上角设置中进行'
+    ? '尚未填写 API Key，请在右上角设置的密钥管理中添加'
     : appMode === 'agent'
     ? '画廊批量任务进行中，请等待完成或回到画廊停止后再提交'
     : '批量任务进行中，请等待完成或停止后再提交'

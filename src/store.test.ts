@@ -3156,6 +3156,31 @@ describe('agent draft lifecycle', () => {
     expect(state.inputImages).toEqual([imageB])
   })
 
+  it('opens the agent settings tab instead of a dialog when the agent config is incomplete', () => {
+    const imagesProfile = createDefaultOpenAIProfile({ id: 'openai-images', apiKey: 'image-key', apiMode: 'images' })
+    useStore.setState({
+      settings: normalizeSettings({
+        ...DEFAULT_SETTINGS,
+        profiles: [imagesProfile],
+        activeProfileId: imagesProfile.id,
+      }),
+      appMode: 'gallery',
+      showSettings: false,
+      settingsTabRequest: null,
+      showToast: vi.fn(),
+      setConfirmDialog: vi.fn(),
+    })
+
+    useStore.getState().setAppMode('agent')
+
+    const state = useStore.getState()
+    expect(state.appMode).toBe('gallery')
+    expect(state.showSettings).toBe(true)
+    expect(state.settingsTabRequest).toBe('agent')
+    expect(state.setConfirmDialog).not.toHaveBeenCalled()
+    expect(state.showToast).toHaveBeenCalledWith(expect.stringContaining('Responses API'), 'error')
+  })
+
   it('persists the gallery draft while agent mode is active', () => {
     const galleryPrompt = 'gallery draft'
     useStore.setState({

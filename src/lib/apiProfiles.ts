@@ -1,4 +1,5 @@
 import type {
+  ApiKeyEntry,
   ApiMode,
   ApiProfile,
   ApiProvider,
@@ -549,6 +550,48 @@ function normalizeProviderDrafts(
   return entries.length ? Object.fromEntries(entries) : undefined
 }
 
+function createApiKeyId() {
+  return `key-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** 密钥列表以 apiKeys 为准，apiKey 始终回写为当前启用项的值 */
+function normalizeApiKeyEntries(record: Record<string, unknown>, rawApiKey: string) {
+  const entries: ApiKeyEntry[] = []
+  const usedIds = new Set<string>()
+  const usedKeys = new Set<string>()
+
+  if (Array.isArray(record.apiKeys)) {
+    for (const item of record.apiKeys) {
+      if (!isRecord(item)) continue
+      const key = typeof item.key === 'string' ? item.key.trim() : ''
+      if (!key || usedKeys.has(key)) continue
+      const rawId = typeof item.id === 'string' ? item.id.trim() : ''
+      const id = rawId && !usedIds.has(rawId) ? rawId : createApiKeyId()
+      usedIds.add(id)
+      usedKeys.add(key)
+      entries.push({ id, key })
+    }
+  }
+
+  const apiKey = rawApiKey.trim()
+  const rawActiveId = typeof record.activeApiKeyId === 'string' ? record.activeApiKeyId : ''
+
+  // 旧数据只有单个 apiKey，迁移成列表里的唯一一项
+  if (!entries.length) {
+    if (!apiKey) return { apiKeys: undefined, activeApiKeyId: undefined, apiKey: '' }
+    const entry = { id: rawActiveId || 'api-key', key: apiKey }
+    return { apiKeys: [entry], activeApiKeyId: entry.id, apiKey: entry.key }
+  }
+
+  const active = entries.find((entry) => entry.id === rawActiveId)
+    ?? entries.find((entry) => entry.key === apiKey)
+    ?? entries[0]
+  // apiKey 被单独写入（例如导入链接）时同步到当前启用项
+  if (apiKey && apiKey !== active.key) active.key = apiKey
+
+  return { apiKeys: entries, activeApiKeyId: active.id, apiKey: active.key }
+}
+
 export function normalizeApiProfile(
   input: unknown,
   fallback?: Partial<ApiProfile>,
@@ -570,6 +613,7 @@ export function normalizeApiProfile(
     ? typeof record.streamImages === 'boolean' ? record.streamImages : defaults.streamImages
     : false
   const nativeTransparentBackgroundUnavailable = customProviderIds.has(provider) && !nativeTransparentProviderIds.has(provider)
+  const apiKeyEntries = normalizeApiKeyEntries(record, typeof record.apiKey === 'string' ? record.apiKey : defaults.apiKey)
 
   return {
     ...defaults,
@@ -579,7 +623,9 @@ export function normalizeApiProfile(
     description: typeof record.description === 'string' && record.description.trim() ? record.description : undefined,
     provider,
     baseUrl: provider === 'fal' ? rawBaseUrl.trim().replace(/\/+$/, '') : rawBaseUrl,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : defaults.apiKey,
+    apiKey: apiKeyEntries.apiKey,
+    apiKeys: apiKeyEntries.apiKeys,
+    activeApiKeyId: apiKeyEntries.activeApiKeyId,
     model: (typeof record.model === 'string' && normalizeModelList(record.model)) || defaults.model,
     selectedModel: typeof record.selectedModel === 'string' && record.selectedModel.trim() ? record.selectedModel.trim() : undefined,
     imageGenerationModel: typeof record.imageGenerationModel === 'string'
@@ -1242,7 +1288,15 @@ export function mergePresetImportedSettings(
       ? mergePresetProfileSnapshot(previous, normalizedProfile, fields)
       : normalizedProfile
     if (!matched) return importedProfile
-    if (options.lockPresetParams) return { ...importedProfile, apiKey: matched.apiKey }
+    if (options.lockPresetParams) {
+      // 参数由部署端锁定时只保留用户自己填写的密钥
+      return {
+        ...importedProfile,
+        apiKey: matched.apiKey,
+        apiKeys: matched.apiKeys,
+        activeApiKeyId: matched.activeApiKeyId,
+      }
+    }
     if (!previous) return { ...matched, baseUrl: importedProfile.baseUrl, isDefault: importedProfile.isDefault }
 
     const changed: Partial<ApiProfile> = {}

@@ -1,126 +1,168 @@
 import {
   DEFAULT_AGENT_MAX_TOOL_ROUNDS,
-  type AgentApiConfigMode,
   type ApiProfile,
   type AppSettings,
 } from '../../types'
-import { normalizeAgentMaxToolRounds } from '../../lib/apiProfiles'
-import { isPresetAgentFieldLocked } from '../../lib/presetConfig'
+import { isAgentTextApiProfile, normalizeAgentMaxToolRounds, resolveApiProfileModel, splitModelList } from '../../lib/apiProfiles'
+import { getImageGenerationModel, DEFAULT_IMAGES_MODEL } from '../../lib/imageModels'
 import Select from '../Select'
+
+interface AgentSettingsTabProps {
+  draft: AppSettings
+  activeProfile: ApiProfile
+  agentMaxToolRoundsInput: string
+  setAgentMaxToolRoundsInput: (value: string) => void
+  commitSettings: (nextDraft: AppSettings) => void
+  commitAgentMaxToolRounds: () => void
+}
+
+const AGENT_MODEL_SEPARATOR = '|'
 
 interface SelectOption {
   label: string
   value: string
 }
 
-interface AgentSettingsTabProps {
-  draft: AppSettings
-  agentMaxToolRoundsInput: string
-  agentTextProfileOptions: SelectOption[]
-  agentImageProfileOptions: SelectOption[]
-  selectedAgentTextProfile: ApiProfile | null
-  selectedAgentImageProfile: ApiProfile | null
-  setAgentMaxToolRoundsInput: (value: string) => void
-  updateAgentApiConfigMode: (mode: AgentApiConfigMode) => void
-  commitSettings: (nextDraft: AppSettings) => void
-  commitAgentMaxToolRounds: () => void
+function encodeAgentModel(profileId: string, field: 'model' | 'imageGenerationModel', model: string) {
+  return [profileId, field, model].join(AGENT_MODEL_SEPARATOR)
+}
+
+function parseAgentModel(value: string) {
+  const [profileId, field, ...rest] = value.split(AGENT_MODEL_SEPARATOR)
+  if (!profileId || (field !== 'model' && field !== 'imageGenerationModel') || !rest.length) return null
+  return { profileId, field, model: rest.join(AGENT_MODEL_SEPARATOR) }
 }
 
 export default function AgentSettingsTab({
   draft,
+  activeProfile,
   agentMaxToolRoundsInput,
-  agentTextProfileOptions,
-  agentImageProfileOptions,
-  selectedAgentTextProfile,
-  selectedAgentImageProfile,
   setAgentMaxToolRoundsInput,
-  updateAgentApiConfigMode,
   commitSettings,
   commitAgentMaxToolRounds,
 }: AgentSettingsTabProps) {
+  // 有多个候选配置时在模型名后标出配置名，避免同名模型难以区分
+  const labelFor = (profile: ApiProfile, model: string) => (
+    draft.profiles.length > 1 ? `${model}（${profile.name}）` : model
+  )
+  // 对话模型只能用 Responses API 配置，画图模型来自图片配置或 Responses 配置的图像模型
+  const imageModelOf = (profile: ApiProfile) => getImageGenerationModel(profile) || DEFAULT_IMAGES_MODEL
+  const textOptions = draft.profiles
+    .filter(isAgentTextApiProfile)
+    .flatMap((profile) => splitModelList(profile.model).map((model) => ({
+      label: labelFor(profile, model),
+      value: encodeAgentModel(profile.id, 'model', model),
+    })))
+  const imageOptions = draft.profiles.flatMap((profile) => (
+    isAgentTextApiProfile(profile)
+      ? [{
+          label: labelFor(profile, imageModelOf(profile)),
+          value: encodeAgentModel(profile.id, 'imageGenerationModel', imageModelOf(profile)),
+        }]
+      : splitModelList(profile.model).map((model) => ({
+          label: labelFor(profile, model),
+          value: encodeAgentModel(profile.id, 'model', model),
+        }))
+  ))
+
+  // 与 normalizeSettings 的回落规则一致：优先显式选择，其次首页配置，最后第一个 Responses 配置
+  const fallbackTextProfile = isAgentTextApiProfile(activeProfile)
+    ? activeProfile
+    : draft.profiles.find(isAgentTextApiProfile) ?? activeProfile
+  const textProfile = (draft.agentApiConfigMode === 'off'
+    ? null
+    : draft.profiles.find((profile) => profile.id === draft.agentTextProfileId && isAgentTextApiProfile(profile)))
+    ?? fallbackTextProfile
+  const imageProfile = draft.profiles.find((profile) => profile.id === draft.agentImageProfileId) ?? activeProfile
+  const textValue = encodeAgentModel(textProfile.id, 'model', resolveApiProfileModel(textProfile).model)
+  const imageValue = isAgentTextApiProfile(imageProfile)
+    ? encodeAgentModel(imageProfile.id, 'imageGenerationModel', imageModelOf(imageProfile))
+    : encodeAgentModel(imageProfile.id, 'model', resolveApiProfileModel(imageProfile).model)
+
+  // 当前值不在可选项里（例如首页配置是纯图片配置）时补一个占位项，避免下拉框显示空白
+  const withPlaceholder = (options: SelectOption[], value: string) => (
+    options.some((option) => option.value === value) ? { options, value } : { options: [{ label: '未设置', value: '' }, ...options], value: '' }
+  )
+  const textSelect = withPlaceholder(textOptions, textValue)
+  const imageSelect = withPlaceholder(imageOptions, imageValue)
+
+  const applyTextModel = (value: string) => {
+    const parsed = parseAgentModel(value)
+    if (!parsed) return
+    commitSettings({
+      ...draft,
+      agentTextProfileId: parsed.profileId,
+      // 对话与画图用同一个 Responses 配置时走原生图像工具，否则用混合模式
+      agentApiConfigMode: parsed.profileId === imageProfile.id && isAgentTextApiProfile(imageProfile) ? 'native' : 'hybrid',
+      profiles: draft.profiles.map((profile) => profile.id === parsed.profileId ? { ...profile, selectedModel: parsed.model } : profile),
+    })
+  }
+
+  const applyImageModel = (value: string) => {
+    const parsed = parseAgentModel(value)
+    if (!parsed) return
+    commitSettings({
+      ...draft,
+      agentImageProfileId: parsed.profileId,
+      // 图片配置同时作为首页默认配置，画廊与 Agent 使用同一个画图模型
+      activeProfileId: parsed.field === 'model' ? parsed.profileId : draft.activeProfileId,
+      agentApiConfigMode: parsed.profileId === textProfile.id && isAgentTextApiProfile(textProfile) ? 'native' : 'hybrid',
+      profiles: draft.profiles.map((profile) => profile.id === parsed.profileId
+        ? (parsed.field === 'model' ? { ...profile, selectedModel: parsed.model } : { ...profile, imageGenerationModel: parsed.model })
+        : profile),
+    })
+  }
+
   return (
     <div className="space-y-4">
       <div className="block">
         <div className="mb-1 flex items-center justify-between gap-3">
-          <span className="block text-sm text-gray-600 dark:text-gray-300">使用独立的 API 配置</span>
-          <div className="w-20 shrink-0">
-            <Select
-              value={draft.agentApiConfigMode}
-              disabled={isPresetAgentFieldLocked('apiConfigMode')}
-              onChange={(value) => updateAgentApiConfigMode(value as AgentApiConfigMode)}
-              options={[
-                { label: '关闭', value: 'off' },
-                { label: '原生', value: 'native' },
-                { label: '混合', value: 'hybrid' },
-              ]}
-              className="w-full px-3 py-1.5 rounded-xl border border-transparent bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.07] dark:hover:bg-white/[0.1] text-xs transition-all duration-200 text-gray-700 dark:text-gray-200 outline-none"
-            />
+          <span className="block text-sm text-gray-600 dark:text-gray-300">默认对话模型</span>
+          <div className="w-40 shrink-0">
+            {textOptions.length > 0 ? (
+              <Select
+                value={textSelect.value}
+                onChange={applyTextModel}
+                options={textSelect.options}
+                showValueTooltips
+                className="w-full px-3 py-1.5 rounded-xl border border-transparent bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.07] dark:hover:bg-white/[0.1] text-xs transition-all duration-200 text-gray-700 dark:text-gray-200 outline-none"
+              />
+            ) : (
+              <div className="w-full rounded-xl border border-transparent bg-black/[0.04] px-3 py-1.5 text-center text-xs text-gray-700 transition-all duration-200 dark:bg-white/[0.06] dark:text-gray-200">
+                没有可用模型
+              </div>
+            )}
           </div>
         </div>
-        <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500 space-y-1">
-          {(['apiConfigMode', 'textProfileId', 'imageProfileId'] as const).some(isPresetAgentFieldLocked) && (
-            <div>部分选项由部署配置锁定。</div>
-          )}
-          <div>原生：使用原生的 Responses API 配置，由模型调用 <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:bg-white/[0.06]">image_generation</code> 工具生成图片。</div>
-          <div>混合：使用非原生的混合 API 配置，由文本模型调用自定义工具，请求图像模型生成图像，解决部分服务商/模型不支持 <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:bg-white/[0.06]">image_generation</code> 工具的问题。</div>
+        <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
+          Agent 对话和调用工具使用的模型，需要部署提供 Responses API 配置。
         </div>
       </div>
 
-      {draft.agentApiConfigMode !== 'off' && (
-        <>
-          <div className="block">
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <span className="block text-sm text-gray-600 dark:text-gray-300">文本模型 API 配置</span>
-              <div className="w-40 shrink-0">
-                {agentTextProfileOptions.length > 0 ? (
-                  <Select
-                    value={selectedAgentTextProfile?.id ?? '请选择配置'}
-                    disabled={isPresetAgentFieldLocked('textProfileId')}
-                    onChange={(value) => commitSettings({ ...draft, agentTextProfileId: String(value) })}
-                    options={agentTextProfileOptions}
-                    showValueTooltips
-                    className="w-full px-3 py-1.5 rounded-xl border border-transparent bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.07] dark:hover:bg-white/[0.1] text-xs transition-all duration-200 text-gray-700 dark:text-gray-200 outline-none"
-                  />
-                ) : (
-                  <div className="w-full rounded-xl border border-transparent bg-black/[0.04] px-3 py-1.5 text-center text-xs text-gray-700 transition-all duration-200 dark:bg-white/[0.06] dark:text-gray-200">
-                    没有可用配置
-                  </div>
-                )}
+      <div className="block">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <span className="block text-sm text-gray-600 dark:text-gray-300">默认画图模型</span>
+          <div className="w-40 shrink-0">
+            {imageOptions.length > 0 ? (
+              <Select
+                value={imageSelect.value}
+                onChange={applyImageModel}
+                options={imageSelect.options}
+                showValueTooltips
+                className="w-full px-3 py-1.5 rounded-xl border border-transparent bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.07] dark:hover:bg-white/[0.1] text-xs transition-all duration-200 text-gray-700 dark:text-gray-200 outline-none"
+              />
+            ) : (
+              <div className="w-full rounded-xl border border-transparent bg-black/[0.04] px-3 py-1.5 text-center text-xs text-gray-700 transition-all duration-200 dark:bg-white/[0.06] dark:text-gray-200">
+                没有可用模型
               </div>
-            </div>
-            <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-              用于对话和调用工具，仅支持 Responses API 配置。
-            </div>
+            )}
           </div>
+        </div>
+        <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
+          生成图片使用的模型，同时作为首页的默认画图模型。
+        </div>
+      </div>
 
-          {draft.agentApiConfigMode === 'hybrid' && (
-            <div className="block">
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <span className="block text-sm text-gray-600 dark:text-gray-300">图像模型 API 配置</span>
-                <div className="w-40 shrink-0">
-                  {agentImageProfileOptions.length > 0 ? (
-                    <Select
-                      value={selectedAgentImageProfile?.id ?? '请选择配置'}
-                      disabled={isPresetAgentFieldLocked('imageProfileId')}
-                      onChange={(value) => commitSettings({ ...draft, agentImageProfileId: String(value) })}
-                      options={agentImageProfileOptions}
-                      showValueTooltips
-                      className="w-full px-3 py-1.5 rounded-xl border border-transparent bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.07] dark:hover:bg-white/[0.1] text-xs transition-all duration-200 text-gray-700 dark:text-gray-200 outline-none"
-                    />
-                  ) : (
-                    <div className="w-full rounded-xl border border-transparent bg-black/[0.04] px-3 py-1.5 text-center text-xs text-gray-700 transition-all duration-200 dark:bg-white/[0.06] dark:text-gray-200">
-                      没有可用配置
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-                用于生成图像，支持所有类型的 API 配置。
-              </div>
-            </div>
-          )}
-        </>
-      )}
       <label className="block">
         <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">最大工具调用轮数</span>
         <input

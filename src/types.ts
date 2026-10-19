@@ -70,6 +70,12 @@ export interface CustomProviderDefinition {
   poll?: CustomProviderPollMapping
 }
 
+/** 一个配置下保存的单个 API 密钥 */
+export interface ApiKeyEntry {
+  id: string
+  key: string
+}
+
 export interface ApiProfile {
   id: string
   /** 当前部署指定的默认预置配置。 */
@@ -79,7 +85,11 @@ export interface ApiProfile {
   description?: string
   provider: ApiProvider
   baseUrl: string
+  /** 当前启用的密钥值，始终与 apiKeys 中 activeApiKeyId 指向的条目一致 */
   apiKey: string
+  /** 该配置下保存的多个密钥，切换时只改启用项 */
+  apiKeys?: ApiKeyEntry[]
+  activeApiKeyId?: string
   /** 模型 ID 列表，多个模型以 `, ` 分隔 */
   model: string
   /** 首页选中的模型；不在列表中时回退到第一个 */

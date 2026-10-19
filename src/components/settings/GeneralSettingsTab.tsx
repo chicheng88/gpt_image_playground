@@ -422,7 +422,7 @@ export default function GeneralSettingsTab({
             </button>
           </div>
           <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-            开启后，启动时会从 GitHub 获取版本信息，有新版本时在左上角显示 NEW 提示。关闭后可在“关于”中手动检查更新。
+            开启后，启动时会从 GitHub 获取版本信息，有新版本时在左上角显示 NEW 提示。
           </div>
         </div>
       </section>
