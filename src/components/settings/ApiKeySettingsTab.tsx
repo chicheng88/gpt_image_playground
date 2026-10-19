@@ -23,11 +23,11 @@ function maskKey(key: string) {
   return `${key.slice(0, 6)}••••••${key.slice(-4)}`
 }
 
-/** 同一接口（服务商 + 地址 + 代理）的多条配置共用一个密钥列表 */
-function groupByEndpoint(profiles: ApiProfile[]): KeyGroup[] {
+/** 同一服务商的多条配置共用一个密钥列表 */
+function groupByProvider(profiles: ApiProfile[]): KeyGroup[] {
   const groups: KeyGroup[] = []
   for (const profile of profiles) {
-    const key = `${profile.provider}|${profile.baseUrl}|${profile.apiProxy ? 'proxy' : 'direct'}`
+    const key = profile.provider
     const group = groups.find((item) => item.key === key)
     if (group) group.profiles.push(profile)
     else groups.push({ key, profiles: [profile] })
@@ -49,7 +49,7 @@ export default function ApiKeySettingsTab({ draft, presetDescription, commitSett
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [showKeys, setShowKeys] = useState(false)
   const multiple = draft.profiles.length > 1
-  const groups = groupByEndpoint(draft.profiles)
+  const groups = groupByProvider(draft.profiles)
 
   const commitKeys = (group: KeyGroup, nextKeys: ApiKeyEntry[], activeId: string) => {
     const active = nextKeys.find((entry) => entry.id === activeId) ?? nextKeys[0]
@@ -202,7 +202,7 @@ export default function ApiKeySettingsTab({ draft, presetDescription, commitSett
 
       <p data-selectable-text className="px-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
         {groups.some((group) => group.profiles.length > 1)
-          ? '同一个接口下的多条配置共用这些密钥，添加一次即可；请求只使用当前选中的密钥，密钥仅保存在本机。'
+          ? '同一服务商下的多条配置共用这些密钥，添加一次即可；请求只使用当前选中的密钥，密钥仅保存在本机。'
           : '可以保存多个密钥并随时切换，请求只使用当前选中的密钥；密钥仅保存在本机。'}
       </p>
     </div>

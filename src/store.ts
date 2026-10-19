@@ -1239,13 +1239,13 @@ function getAgentProfileValidationError(settings: AppSettings): { profile: ApiPr
     return { profile: textProfile, message: 'Agent 模式需要使用支持 Responses API 的对话模型，请在设置中选择默认对话模型。' }
   }
   const textProfileError = validateApiProfile(textProfile)
-  if (textProfileError) return { profile: textProfile, message: `文本模型 API 配置不完整：${textProfileError}` }
+  if (textProfileError) return { profile: textProfile, message: `文本模型 API 配置不完整：${textProfileError}（配置「${textProfile.name}」）` }
 
   if (normalized.agentApiConfigMode === 'hybrid') {
     const imageProfile = getAgentImageApiProfile(normalized)
     if (!imageProfile) return { profile: null, message: '图像模型 API 配置不存在，请联系站点管理员。' }
     const imageProfileError = validateApiProfile(imageProfile)
-    if (imageProfileError) return { profile: imageProfile, message: `图像模型 API 配置不完整：${imageProfileError}` }
+    if (imageProfileError) return { profile: imageProfile, message: `图像模型 API 配置不完整：${imageProfileError}（配置「${imageProfile.name}」）` }
   }
 
   return null

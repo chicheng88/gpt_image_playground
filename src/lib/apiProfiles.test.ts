@@ -10,6 +10,8 @@ import {
   createDefaultFalProfile,
   getApiProviderLabel,
   getActiveApiProfile,
+  getAgentImageApiProfile,
+  getAgentTextApiProfile,
   getCustomProviderDefinition,
   findEquivalentApiProfile,
   importCustomProviderDefinitionFromJson,
@@ -1793,31 +1795,33 @@ describe('api key entries', () => {
     expect(profile.activeApiKeyId).toBeUndefined()
   })
 
-  it('shares keys between profiles that use the same endpoint', () => {
+  it('borrows a saved key from another profile of the same provider for the agent', () => {
     const settings = normalizeSettings({
       profiles: [
         { id: 'images', name: '图片', provider: 'openai', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-shared', model: 'gpt-image-2' },
-        { id: 'agent', name: '对话', provider: 'openai', baseUrl: 'https://api.example.com/v1', model: 'gpt-5', apiMode: 'responses' },
+        { id: 'agent', name: '对话', provider: 'openai', baseUrl: 'https://other.example.com/v1', model: 'gpt-5', apiMode: 'responses' },
       ],
       activeProfileId: 'images',
+      agentApiConfigMode: 'hybrid',
+      agentTextProfileId: 'agent',
+      agentImageProfileId: 'images',
     })
 
-    const agent = settings.profiles.find((profile) => profile.id === 'agent')
-    expect(agent?.apiKey).toBe('sk-shared')
-    expect(agent?.apiKeys).toEqual([{ id: 'api-key', key: 'sk-shared' }])
+    expect(getAgentTextApiProfile(settings)?.apiKey).toBe('sk-shared')
+    expect(getAgentTextApiProfile(settings)?.apiKeys).toEqual([{ id: 'api-key', key: 'sk-shared' }])
   })
 
-  it('keeps keys separate for different endpoints', () => {
+  it('does not borrow keys across providers', () => {
     const settings = normalizeSettings({
       profiles: [
         { id: 'a', name: 'A', provider: 'openai', baseUrl: 'https://api-a.example.com/v1', apiKey: 'sk-a', model: 'gpt-image-2' },
-        { id: 'b', name: 'B', provider: 'openai', baseUrl: 'https://api-b.example.com/v1', model: 'gpt-5', apiMode: 'responses' },
+        { id: 'b', name: 'B', provider: 'fal', model: 'openai/gpt-image-2' },
       ],
       activeProfileId: 'a',
+      agentApiConfigMode: 'hybrid',
+      agentImageProfileId: 'b',
     })
 
-    const b = settings.profiles.find((profile) => profile.id === 'b')
-    expect(b?.apiKey).toBe('')
-    expect(b?.apiKeys).toBeUndefined()
+    expect(getAgentImageApiProfile(settings)?.apiKey).toBe('')
   })
 })

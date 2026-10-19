@@ -723,23 +723,14 @@ function normalizeDeploymentProfileEntries(input: unknown, customProviderIds: Se
 }
 
 /**
- * 同一接口（服务商 + 地址 + 代理）的多条配置共用一套密钥：
- * 例如图片配置和 Agent 对话配置指向同一个网关时，用户只需要填写一次。
+ * Agent 使用的配置如果自己没有密钥，就复用同一服务商下其他配置已保存的密钥。
+ * 图片配置和对话配置指向同一个网关时，用户只需要在密钥管理里填一次。
  */
-function shareApiKeysAcrossSameEndpoint(profiles: ApiProfile[]) {
-  const donors = new Map<string, ApiProfile>()
-  for (const profile of profiles) {
-    const key = `${profile.provider}|${profile.baseUrl}|${profile.apiProxy ? 'proxy' : 'direct'}`
-    const donor = donors.get(key)
-    if (!donor) {
-      if (profile.apiKeys?.length) donors.set(key, profile)
-      continue
-    }
-    if (profile.apiKeys?.length) continue
-    profile.apiKeys = donor.apiKeys
-    profile.activeApiKeyId = donor.activeApiKeyId
-    profile.apiKey = donor.apiKey
-  }
+function withBorrowedApiKey(profile: ApiProfile | null, settings: AppSettings): ApiProfile | null {
+  if (!profile || profile.apiKey.trim()) return profile
+  const donor = settings.profiles.find((item) => item.provider === profile.provider && item.apiKey.trim())
+  if (!donor) return profile
+  return { ...profile, apiKey: donor.apiKey, apiKeys: donor.apiKeys, activeApiKeyId: donor.activeApiKeyId }
 }
 
 export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSettings {
@@ -773,7 +764,6 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     ...profile,
     isDefault: profile.id === defaultProfileId ? true : undefined,
   }))
-  shareApiKeysAcrossSameEndpoint(profiles)
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
@@ -835,16 +825,17 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
 
 export function getAgentTextApiProfile(settings: Partial<AppSettings> | unknown): ApiProfile | null {
   const normalized = normalizeSettings(settings)
-  if (normalized.agentApiConfigMode === 'off') return getActiveApiProfile(normalized)
-  const profile = normalized.profiles.find((item) => item.id === normalized.agentTextProfileId)
-  return profile ? resolveApiProfileModel(profile) : null
+  const profile = normalized.agentApiConfigMode === 'off'
+    ? getActiveApiProfile(normalized)
+    : normalized.profiles.find((item) => item.id === normalized.agentTextProfileId)
+  return profile ? withBorrowedApiKey(resolveApiProfileModel(profile), normalized) : null
 }
 
 export function getAgentImageApiProfile(settings: Partial<AppSettings> | unknown): ApiProfile | null {
   const normalized = normalizeSettings(settings)
   if (normalized.agentApiConfigMode !== 'hybrid') return getAgentTextApiProfile(normalized)
   const profile = normalized.profiles.find((item) => item.id === normalized.agentImageProfileId)
-  return profile ? resolveApiProfileModel(profile) : null
+  return profile ? withBorrowedApiKey(resolveApiProfileModel(profile), normalized) : null
 }
 
 export function getCustomProviderDefinition(settings: Partial<AppSettings> | unknown, provider: ApiProvider): CustomProviderDefinition | null {
