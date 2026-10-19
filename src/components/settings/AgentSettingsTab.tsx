@@ -46,24 +46,26 @@ export default function AgentSettingsTab({
     draft.profiles.length > 1 ? `${model}（${profile.name}）` : model
   )
   // 对话模型只能用 Responses API 配置，画图模型来自图片配置或 Responses 配置的图像模型
-  const imageModelOf = (profile: ApiProfile) => getImageGenerationModel(profile) || DEFAULT_IMAGES_MODEL
   const textOptions = draft.profiles
     .filter(isAgentTextApiProfile)
     .flatMap((profile) => splitModelList(profile.model).map((model) => ({
       label: labelFor(profile, model),
       value: encodeAgentModel(profile.id, 'model', model),
     })))
-  const imageOptions = draft.profiles.flatMap((profile) => (
-    isAgentTextApiProfile(profile)
-      ? [{
-          label: labelFor(profile, imageModelOf(profile)),
-          value: encodeAgentModel(profile.id, 'imageGenerationModel', imageModelOf(profile)),
-        }]
-      : splitModelList(profile.model).map((model) => ({
-          label: labelFor(profile, model),
-          value: encodeAgentModel(profile.id, 'model', model),
-        }))
-  ))
+  const hasImageProfile = draft.profiles.some((profile) => !isAgentTextApiProfile(profile))
+  const imageOptions = draft.profiles.flatMap((profile) => {
+    if (!isAgentTextApiProfile(profile)) {
+      return splitModelList(profile.model).map((model) => ({
+        label: labelFor(profile, model),
+        value: encodeAgentModel(profile.id, 'model', model),
+      }))
+    }
+    // Responses 配置的图像模型只在显式填写或没有单独的图片配置时才有意义
+    const imageModel = profile.imageGenerationModel?.trim() ?? ''
+    if (!imageModel && hasImageProfile) return []
+    const model = imageModel || DEFAULT_IMAGES_MODEL
+    return [{ label: labelFor(profile, model), value: encodeAgentModel(profile.id, 'imageGenerationModel', model) }]
+  })
 
   // 与 normalizeSettings 的回落规则一致：优先显式选择，其次首页配置，最后第一个 Responses 配置
   const fallbackTextProfile = isAgentTextApiProfile(activeProfile)
@@ -76,7 +78,7 @@ export default function AgentSettingsTab({
   const imageProfile = draft.profiles.find((profile) => profile.id === draft.agentImageProfileId) ?? activeProfile
   const textValue = encodeAgentModel(textProfile.id, 'model', resolveApiProfileModel(textProfile).model)
   const imageValue = isAgentTextApiProfile(imageProfile)
-    ? encodeAgentModel(imageProfile.id, 'imageGenerationModel', imageModelOf(imageProfile))
+    ? encodeAgentModel(imageProfile.id, 'imageGenerationModel', getImageGenerationModel(imageProfile) || DEFAULT_IMAGES_MODEL)
     : encodeAgentModel(imageProfile.id, 'model', resolveApiProfileModel(imageProfile).model)
 
   // 当前值不在可选项里（例如首页配置是纯图片配置）时补一个占位项，避免下拉框显示空白

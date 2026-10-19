@@ -1792,4 +1792,32 @@ describe('api key entries', () => {
     expect(profile.apiKeys).toBeUndefined()
     expect(profile.activeApiKeyId).toBeUndefined()
   })
+
+  it('shares keys between profiles that use the same endpoint', () => {
+    const settings = normalizeSettings({
+      profiles: [
+        { id: 'images', name: '图片', provider: 'openai', baseUrl: 'https://api.example.com/v1', apiKey: 'sk-shared', model: 'gpt-image-2' },
+        { id: 'agent', name: '对话', provider: 'openai', baseUrl: 'https://api.example.com/v1', model: 'gpt-5', apiMode: 'responses' },
+      ],
+      activeProfileId: 'images',
+    })
+
+    const agent = settings.profiles.find((profile) => profile.id === 'agent')
+    expect(agent?.apiKey).toBe('sk-shared')
+    expect(agent?.apiKeys).toEqual([{ id: 'api-key', key: 'sk-shared' }])
+  })
+
+  it('keeps keys separate for different endpoints', () => {
+    const settings = normalizeSettings({
+      profiles: [
+        { id: 'a', name: 'A', provider: 'openai', baseUrl: 'https://api-a.example.com/v1', apiKey: 'sk-a', model: 'gpt-image-2' },
+        { id: 'b', name: 'B', provider: 'openai', baseUrl: 'https://api-b.example.com/v1', model: 'gpt-5', apiMode: 'responses' },
+      ],
+      activeProfileId: 'a',
+    })
+
+    const b = settings.profiles.find((profile) => profile.id === 'b')
+    expect(b?.apiKey).toBe('')
+    expect(b?.apiKeys).toBeUndefined()
+  })
 })

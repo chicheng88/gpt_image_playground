@@ -427,7 +427,6 @@ export default function SettingsModal() {
             {activeTab === 'api' && (
               <ApiKeySettingsTab
                 draft={draft}
-                profile={activeProfile}
                 presetDescription={activePresetDescription}
                 commitSettings={commitSettings}
               />

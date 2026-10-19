@@ -722,6 +722,26 @@ function normalizeDeploymentProfileEntries(input: unknown, customProviderIds: Se
   })
 }
 
+/**
+ * 同一接口（服务商 + 地址 + 代理）的多条配置共用一套密钥：
+ * 例如图片配置和 Agent 对话配置指向同一个网关时，用户只需要填写一次。
+ */
+function shareApiKeysAcrossSameEndpoint(profiles: ApiProfile[]) {
+  const donors = new Map<string, ApiProfile>()
+  for (const profile of profiles) {
+    const key = `${profile.provider}|${profile.baseUrl}|${profile.apiProxy ? 'proxy' : 'direct'}`
+    const donor = donors.get(key)
+    if (!donor) {
+      if (profile.apiKeys?.length) donors.set(key, profile)
+      continue
+    }
+    if (profile.apiKeys?.length) continue
+    profile.apiKeys = donor.apiKeys
+    profile.activeApiKeyId = donor.activeApiKeyId
+    profile.apiKey = donor.apiKey
+  }
+}
+
 export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSettings {
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const customProviders = normalizeCustomProviderDefinitions(record.customProviders)
@@ -753,6 +773,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     ...profile,
     isDefault: profile.id === defaultProfileId ? true : undefined,
   }))
+  shareApiKeysAcrossSameEndpoint(profiles)
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
