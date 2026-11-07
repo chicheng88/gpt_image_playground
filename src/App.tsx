@@ -8,7 +8,6 @@ import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigration
 import { useAppFonts } from './hooks/useAppFonts'
 import { useCloseConfirm } from './hooks/useCloseConfirm'
 import { promptImportLink, useImportLinks } from './hooks/useImportLinks'
-import { useAutoUpdateCheck } from './hooks/useReleaseUpdates'
 import { useSaveLocationPrompt } from './hooks/useSaveLocationPrompt'
 import Header from './components/Header'
 import SearchBar from './components/SearchBar'
@@ -18,7 +17,6 @@ import InputBar from './components/InputBar'
 import DetailModal from './components/DetailModal'
 import Lightbox from './components/Lightbox'
 import SettingsModal from './components/SettingsModal'
-import UpdateModal from './components/UpdateModal'
 import ConfirmDialog from './components/ConfirmDialog'
 import DataProgressDialog from './components/DataProgressDialog'
 import Toast from './components/Toast'
@@ -46,18 +44,16 @@ export default function App() {
   const activeFavoriteCollectionId = useStore((s) => s.activeFavoriteCollectionId)
   const writeLogFile = useStore((s) => s.settings.writeLogFile)
   const saveLocationMode = useStore((s) => s.settings.saveLocationMode)
-  const autoCheckUpdate = useStore((s) => s.settings.autoCheckUpdate)
   const [startupImportDone, setStartupImportDone] = useState(false)
   useDockerApiUrlMigrationNotice()
   useAppFonts()
   useGlobalClickSuppression()
   useCloseConfirm()
   useSaveLocationPrompt()
-  useAutoUpdateCheck(autoCheckUpdate)
   // 运行中的链接导入要等启动时的预置配置写入完，否则会被启动流程覆盖
   useImportLinks(startupImportDone)
 
-  // 渲染库较大，不放进首屏；页面空闲时预加载，打开公告、更新日志或 Agent 对话时可以直接渲染
+  // 渲染库较大，不放进首屏；页面空闲时预加载，打开公告、任务详情或 Agent 对话时可以直接渲染
   useEffect(() => {
     if (!('requestIdleCallback' in window)) {
       const timer = setTimeout(preloadMarkdownRenderer, 1_000)
@@ -222,7 +218,6 @@ export default function App() {
       <DetailModal />
       <Lightbox />
       <SettingsModal />
-      <UpdateModal />
       <DataProgressDialog />
       <ConfirmDialog />
       <SupportPromptModal />

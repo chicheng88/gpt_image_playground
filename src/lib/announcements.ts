@@ -1,4 +1,4 @@
-import { compareVersions } from './releaseUpdates'
+import { compareVersions } from './version'
 
 export interface Announcement {
   id: string

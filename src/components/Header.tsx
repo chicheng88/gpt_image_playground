@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { setUpdateModalOpen, useReleaseUpdates } from '../hooks/useReleaseUpdates'
 import { useTooltip } from '../hooks/useTooltip'
-import { shouldShowUpdate } from '../lib/releaseUpdates'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
@@ -22,8 +20,6 @@ export default function Header() {
   const activeConversation = agentConversations.find((item) => item.id === activeAgentConversationId)
   const favoriteCollectionTitle = useFavoriteCollectionTitle()
   const showFavoriteCollectionTitle = appMode === 'gallery' && Boolean(activeFavoriteCollectionId)
-  const latestRelease = useReleaseUpdates((s) => s.releases[0])
-  const hasUpdate = useReleaseUpdates((s) => shouldShowUpdate(s.releases[0], __APP_VERSION__, s.ignoredVersion))
   const [showHelp, setShowHelp] = useState(false)
   const [hintVisible, setHintVisible] = useState(false)
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up')
@@ -92,17 +88,6 @@ export default function Header() {
                 <span className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">
                   欢迎光临
                 </span>
-              )}
-              {/* 透明伪元素把点击区域扩大到 32px 以上，外观不变 */}
-              {hasUpdate && latestRelease && (
-                <button
-                  type="button"
-                  onClick={() => setUpdateModalOpen(true)}
-                  className="absolute -right-1 -top-1 translate-x-full -translate-y-1/4 px-1 py-0.5 rounded-[4px] border border-red-500/30 text-[9px] font-black bg-red-500 text-white hover:bg-red-600 transition-all animate-fade-in leading-none shadow-sm before:absolute before:left-0 before:-right-[9px] before:-inset-y-[9px] before:content-['']"
-                  title={`新版本 ${latestRelease.tag}`}
-                >
-                  NEW
-                </button>
               )}
             </h1>
             {appMode === 'agent' && <div className="hidden sm:flex items-center gap-1 relative">

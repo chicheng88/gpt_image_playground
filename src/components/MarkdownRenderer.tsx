@@ -144,7 +144,7 @@ function loadMarkdownRenderer() {
   return (canLoadStreamdown ? loadStreamdown() : loadLegacyMarkdown()).then((next) => (loadedRenderer = next))
 }
 
-/** 渲染库较大，不放进首屏；页面空闲时预加载，打开公告、更新日志或 Agent 对话时可以直接渲染 */
+/** 渲染库较大，不放进首屏；页面空闲时预加载，打开公告、任务详情或 Agent 对话时可以直接渲染 */
 export function preloadMarkdownRenderer() {
   void loadMarkdownRenderer()
 }

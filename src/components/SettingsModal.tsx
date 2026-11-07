@@ -11,6 +11,7 @@ import {
   DEFAULT_IMAGES_MODEL,
   DEFAULT_RESPONSES_MODEL,
   DEFAULT_SETTINGS,
+  NATIVE_IMAGE_PROVIDERS,
   getActiveApiProfile,
   getCustomProviderDefinition,
   getDefaultApiProfileId,
@@ -28,7 +29,6 @@ import { requestBrowserNotificationPermission, type BrowserNotificationPermissio
 import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CustomProviderDefinition, type ZipDownloadRoute } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
-import { updateModalScrollRef, useReleaseUpdates } from '../hooks/useReleaseUpdates'
 import { Checkbox } from './Checkbox'
 import { CloseIcon, TrashIcon, ExportIcon, ImportIcon } from './icons'
 import GeneralSettingsTab from './settings/GeneralSettingsTab'
@@ -145,13 +145,14 @@ export default function SettingsModal() {
     const normalizedProfiles = nextDraft.profiles.map((profile) => {
       const nextApiProxy = isProfileApiProxyEligible(nextDraft, profile) && apiProxyAvailable ? (apiProxyLocked || profile.apiProxy) : false
       const shouldKeepEmptyBaseUrl = profile.provider !== 'fal' && nextApiProxy && !profile.baseUrl.trim()
+      const nativeProvider = profile.provider === 'google' || profile.provider === 'xai' ? NATIVE_IMAGE_PROVIDERS[profile.provider] : null
       const emptyBaseUrlFallback = profile.id === defaultProfileId
         ? getDefaultPresetBaseUrl()
-        : DEFAULT_SETTINGS.baseUrl
+        : nativeProvider?.baseUrl ?? DEFAULT_SETTINGS.baseUrl
       const normalizedBaseUrl = profile.provider === 'fal'
         ? profile.baseUrl.trim().replace(/\/+$/, '') || (profile.id === defaultProfileId ? '' : DEFAULT_FAL_BASE_URL)
-        : shouldKeepEmptyBaseUrl ? '' : normalizeBaseUrl(profile.baseUrl.trim() || emptyBaseUrlFallback)
-      const defaultModel = profile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(profile.apiMode)
+        : shouldKeepEmptyBaseUrl ? '' : normalizeBaseUrl(profile.baseUrl.trim() || emptyBaseUrlFallback, profile.provider === 'google' ? 'v1beta' : 'v1')
+      const defaultModel = nativeProvider?.model ?? (profile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(profile.apiMode))
       return {
         ...profile,
         name: profile.name.trim() || (profile.id === defaultProfileId ? '默认' : '新配置'),
@@ -270,8 +271,7 @@ export default function SettingsModal() {
   }
 
   useCloseOnEscape(showSettings && !dataTransferMode, handleClose)
-  const updateModalOpen = useReleaseUpdates((s) => s.modalOpen)
-  usePreventBackgroundScroll(showSettings, updateModalOpen ? updateModalScrollRef : showZipDownloadRouteManager ? zipDownloadRouteScrollBoundaryRef : settingsScrollBoundaryRef)
+  usePreventBackgroundScroll(showSettings, showZipDownloadRouteManager ? zipDownloadRouteScrollBoundaryRef : settingsScrollBoundaryRef)
 
   if (!showSettings) return null
 

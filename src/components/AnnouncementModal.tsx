@@ -4,7 +4,6 @@ import { useStore } from '../store'
 import { useAnnouncements } from '../hooks/useAnnouncements'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
-import { useReleaseUpdates } from '../hooks/useReleaseUpdates'
 import MarkdownRenderer from './MarkdownRenderer'
 import { CloseIcon } from './icons'
 
@@ -17,8 +16,7 @@ export default function AnnouncementModal({ ready }: { ready: boolean }) {
     s.confirmDialog || s.supportPromptOpen || s.showSettings || s.detailTaskId || s.lightboxImageId || s.maskEditorImageId || s.sketchBoard
     || s.isManageCollectionsModalOpen || s.favoritePickerTaskIds,
   ))
-  const updateModalOpen = useReleaseUpdates((s) => s.modalOpen)
-  const visible = Boolean(announcement) && !blocked && !updateModalOpen
+  const visible = Boolean(announcement) && !blocked
   // X、Esc、点遮罩表示不想看公告，把剩下的未读公告一并记为已读；“下一条”和主按钮只读掉当前一条
   const close = () => dismiss(pending.map((item) => item.id))
   const next = () => dismiss([announcement.id])

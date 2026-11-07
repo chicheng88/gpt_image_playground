@@ -15,7 +15,7 @@ export const ZIP_DOWNLOAD_ROUTE_VALUES = [
 ] as const
 export type ZipDownloadRoute = typeof ZIP_DOWNLOAD_ROUTE_VALUES[number]
 export const DEFAULT_ZIP_DOWNLOAD_ROUTES: ZipDownloadRoute[] = ['task-selection', 'favorite-collection-selection']
-export type BuiltInApiProvider = 'openai' | 'sb2api-async' | 'fal'
+export type BuiltInApiProvider = 'openai' | 'google' | 'xai' | 'sb2api-async' | 'fal'
 export type ApiProvider = BuiltInApiProvider | string
 export type CustomProviderTemplate = 'http-image'
 export const DEFAULT_STREAM_PARTIAL_IMAGES = 1
@@ -68,6 +68,13 @@ export interface CustomProviderDefinition {
   submit: CustomProviderSubmitMapping
   editSubmit?: CustomProviderSubmitMapping
   poll?: CustomProviderPollMapping
+  /** 按顺序匹配模型 ID，支持 * 通配符；匹配后使用整套接口映射 */
+  modelOverrides?: Array<{
+    models: string[]
+    submit: CustomProviderSubmitMapping
+    editSubmit?: CustomProviderSubmitMapping
+    poll?: CustomProviderPollMapping
+  }>
 }
 
 /** 一个配置下保存的单个 API 密钥 */
@@ -170,9 +177,9 @@ export interface AppSettings {
   saveTasksToActiveFavoriteCollection: boolean
   retryMode: RetryMode
   allowPromptRewrite: boolean
+  /** 为 Google 图像请求添加生成提示词，并在启用搜索时附加搜索提示词 */
+  imagePromptHints: boolean
   taskCompletionNotification: boolean
-  /** 启动时检查 GitHub 上的新版本 */
-  autoCheckUpdate: boolean
   /** 仅客户端：把警告和错误写入日志文件 */
   writeLogFile: boolean
   enterSubmit: boolean
@@ -224,6 +231,11 @@ export interface ParamDisabledReasons {
 
 export interface TaskParams {
   size: string
+  aspect_ratio?: string
+  resolution?: string
+  google_search?: boolean
+  image_search?: boolean
+  thinking_level?: 'auto' | 'minimal' | 'low' | 'medium' | 'high'
   quality: 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** auto 表示不发送，由模型使用默认值 */
   complexity: typeof IMAGE_COMPLEXITIES[number]
@@ -286,10 +298,20 @@ export interface AgentInputDraft {
 
 export type TaskStatus = 'running' | 'done' | 'error'
 
+export interface ImageSearchGrounding {
+  renderedContent?: string
+  sources: Array<{ uri: string; title: string; imageUri?: string; domain?: string }>
+}
+
 export interface TaskRecord {
+  searchGrounding?: ImageSearchGrounding[]
+  /** 请求中附加的图像生成和搜索提示词 */
+  promptHints?: { prefix: string; suffix: string }
   id: string
   prompt: string
   params: TaskParams
+  /** 请求配置支持的可选参数，用于展示默认值 */
+  paramSupport?: { thinking: boolean; complexity: boolean }
   /** 生成时使用的 Provider 类型 */
   apiProvider?: ApiProvider
   /** 生成时使用的 API 配置 ID */

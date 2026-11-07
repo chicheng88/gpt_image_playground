@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom'
 import { deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, removeMultipleTasks, taskMatchesFilterStatus, taskMatchesSearchQuery } from '../store'
 import { DEFAULT_PARAMS, MAX_INPUT_IMAGES, type TaskRecord } from '../types'
 import { getActiveAgentRounds } from '../lib/agentConversationState'
-import { getActiveApiProfile, getAgentImageApiProfile, normalizeSettings, resolveApiProfileModel, splitModelList } from '../lib/apiProfiles'
-import { isVectorOrAnimatedFormat } from '../lib/imageModels'
+import { createSettingsForApiProfile, getActiveApiProfile, getAgentImageApiProfile, getCustomProviderDefinition, resolveApiProfileModel, splitModelList } from '../lib/apiProfiles'
+import { getImageModelFamily, isVectorOrAnimatedFormat } from '../lib/imageModels'
+import { getImageSearchSupport, getImageThinkingSupport } from '../lib/imageSearch'
 import { ensureImageCached, getCachedImage } from '../lib/imageCache'
 import { splitBatchPrompts } from '../lib/batchPrompts'
 import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, getParamDisabledReasons, normalizeParamsForSettings, supportsTransparentOutput } from '../lib/paramCompatibility'
@@ -440,7 +441,7 @@ export default function InputBar() {
     const reusedProfile = appMode !== 'agent' && settings.reuseTaskApiProfileTemporarily && reusedTaskApiProfileId
       ? settings.profiles.find((profile) => profile.id === reusedTaskApiProfileId)
       : undefined
-    return reusedProfile ? resolveApiProfileModel(reusedProfile, reusedTaskApiModel ?? undefined) : currentActiveProfile
+    return reusedProfile ? resolveApiProfileModel(reusedProfile, reusedTaskApiModel ?? undefined, getCustomProviderDefinition(settings, reusedProfile.provider)) : currentActiveProfile
   }, [appMode, currentActiveProfile, reusedTaskApiModel, reusedTaskApiProfileId, settings])
   const isTemporarilyReusedProfile = activeProfile.id !== currentActiveProfile.id
   const modelOptions = useMemo(() => (
@@ -461,11 +462,7 @@ export default function InputBar() {
     ? agentConversations.find((conversation) => conversation.id === activeAgentConversationId) ?? null
     : null
   const activeAgentIsRunning = Boolean(activeAgentConversation?.rounds.some((round) => round.status === 'running'))
-  const effectiveSettings = useMemo(() => (
-    activeProfile.id === settingsActiveProfile.id
-      ? settings
-      : normalizeSettings({ ...settings, activeProfileId: activeProfile.id })
-  ), [activeProfile.id, settingsActiveProfile.id, settings])
+  const effectiveSettings = useMemo(() => createSettingsForApiProfile(settings, activeProfile), [settings, activeProfile])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   // 批量进行中暂停画廊和 Agent 的提交，需等待完成或停止后再提交
   const batchRunning = Boolean(batchProgress)
@@ -508,10 +505,14 @@ export default function InputBar() {
   }, [setPrompt])
   const activeProvider = activeProfile.provider
   const isFalProvider = activeProvider === 'fal'
+  const imageFamily = getImageModelFamily(activeProfile)
+  const customProvider = getCustomProviderDefinition(effectiveSettings, activeProvider)
+  const searchSupport = getImageSearchSupport(activeProfile, customProvider)
+  const thinkingSupport = getImageThinkingSupport(activeProfile, customProvider)
   const agentAutoImageCount = appMode === 'agent'
   const moderationDisabled = isFalProvider
-  // Agent 只用位图，SVG 和 GIF 在提交时换成 PNG，参数面板按实际发送的格式显示
-  const panelParams = appMode === 'agent' && isVectorOrAnimatedFormat(params.output_format)
+  // Agent 只用位图，SVG 和 GIF 在提交时换成 PNG，参数面板按实际发送的格式显示；Gemini 和 Grok 固定输出位图
+  const panelParams = imageFamily || (appMode === 'agent' && isVectorOrAnimatedFormat(params.output_format))
     ? { ...params, output_format: 'png' as const }
     : params
   const transparentOutputAvailable = appMode === 'gallery'
@@ -524,12 +525,10 @@ export default function InputBar() {
   const isFalTextToImage = isFalProvider && inputImages.length === 0
   const nDraftValue = Number(nInput)
   const effectiveNValue = Number.isNaN(nDraftValue) ? params.n : nDraftValue
-  const streamConcurrentByN = activeProfile.provider === 'openai' && activeProfile.streamImages === true && !agentAutoImageCount && effectiveNValue > 1
+  const streamConcurrentByN = activeProfile.provider === 'openai' && !getImageModelFamily(activeProfile) && activeProfile.streamImages === true && !agentAutoImageCount && effectiveNValue > 1
   const nLimitHintText = agentAutoImageCount
     ? 'Agent 模式下数量由模型根据提示词自动决定'
-    : isFalProvider
-    ? `fal.ai 最大请求数量为 ${outputImageLimit}`
-    : `OpenAI 最大请求数量为 ${outputImageLimit}`
+    : `最大请求数量为 ${outputImageLimit}`
   const displaySize = isFalTextToImage && params.size === 'auto'
     ? DEFAULT_FAL_IMAGE_SIZE
     : (activeProfile.codexCli ? normalizeCodexCliImageSize(params.size) : normalizeImageSize(params.size)) || DEFAULT_PARAMS.size
@@ -552,7 +551,7 @@ export default function InputBar() {
   const moderationHint = useHintTooltip({ enabled: () => moderationDisabled })
   const complexityHint = useHintTooltip({ enabled: () => Boolean(disabledReasons.complexity) })
   const sizeHint = useHintTooltip({ enabled: () => Boolean(disabledReasons.autoSize) || activeProfile.codexCli })
-  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli })
+  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli || Boolean(getImageModelFamily(activeProfile)) })
   const nLimitHint = useHintTooltip({ autoHideMs: 2000 })
   const streamConcurrentHint = useHintTooltip({ enabled: () => streamConcurrentByN })
   const maskTargetImage = maskDraft
@@ -1677,6 +1676,9 @@ export default function InputBar() {
       params={panelParams}
       setParams={setParams}
       activeProfile={activeProfile}
+      imageFamily={imageFamily}
+      searchSupport={searchSupport}
+      thinkingSupport={thinkingSupport}
       modelOptions={modelOptions}
       onModelChange={handleModelChange}
       isFalProvider={isFalProvider}

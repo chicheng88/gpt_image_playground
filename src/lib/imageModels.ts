@@ -5,6 +5,24 @@ export const DEFAULT_IMAGES_MODEL = 'gpt-image-2.5-sunburst'
 /** Images API 生成 SVG 时必填的 svg.model（负责编写 SVG 的文本模型） */
 export const DEFAULT_SVG_MODEL = 'gpt-6.1-sol'
 
+export function getImageModelFamily(profile: Pick<ApiProfile, 'provider' | 'apiMode' | 'model'>): 'gemini' | 'grok' | null {
+  if (profile.provider === 'openai' && profile.apiMode === 'responses') return null
+  if (profile.provider === 'google') return 'gemini'
+  if (profile.provider === 'xai') return 'grok'
+  const model = profile.model.trim().toLowerCase()
+  if (/(?:^|\/)gemini-[^/]*image|(?:^|\/)(?:gemini-)?nano[-_]?banana/.test(model)) return 'gemini'
+  if (/(?:^|\/)grok-[^/]*image|(?:^|\/)grok-imagine-\d/.test(model)) return 'grok'
+  return null
+}
+
+export function supportsGrokQuality(model: string) {
+  return /grok-imagine-image-2[.-]0(?:$|[-/])/.test(model.toLowerCase())
+}
+
+export function usesGrokSizeParams(profile: ApiProfile) {
+  return profile.provider === 'openai' && /(?:^|\/)grok-imagine-1\.5-(?:apimart|ext)$/i.test(profile.model)
+}
+
 export function getImageGenerationModel(profile: ApiProfile) {
   return profile.provider === 'openai' && profile.apiMode === 'responses'
     ? profile.imageGenerationModel?.trim() ?? ''
