@@ -55,9 +55,10 @@ import { showBrowserNotification } from './lib/browserNotification'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
 import { getFalErrorMessage, getFalQueuedImageResult } from './lib/falAiImageApi'
 import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
-import { validateMaskMatchesImage } from './lib/canvasImage'
+import { toApiInputImageDataUrl, validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
-import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
+import { getChangedParams, normalizeParamsForSettings, supportsTransparentOutput } from './lib/paramCompatibility'
+import { isVectorOrAnimatedFormat } from './lib/imageModels'
 import { runWithConcurrency, splitBatchPrompts } from './lib/batchPrompts'
 import { createTransparentOutputMeta, getTransparentRequestParams, removeKeyedBackgroundFromDataUrl } from './lib/transparentImage'
 import { blobToDataUrl, fileToDataUrl } from './lib/dataUrl'
@@ -70,7 +71,7 @@ import { getExportImageSizes, readExportImages } from './lib/exportImages'
 import { deleteAgentRoundFromConversation, getActiveAgentRounds, getAgentRoundPath, normalizeAgentConversations, remapAgentRoundMentionsForPathChange, uniqueIds } from './lib/agentConversationState'
 import { canonicalizeBatchFunctionCallArguments, countResponseToolCalls, createReadyAgentRecoveredToolState, getAgentFunctionOutputCallIds, getAgentRecoveredFailureError, getAgentRecoveredToolCallCount, getPersistableAgentConversations, getPersistableRawResponsePayload, mergeResponseOutputItems, scrubResponseOutputForDeletedAgentTasks, scrubTaskRawResponsePayloadForDeletedTasks } from './lib/agentResponseState'
 import { cleanStaleAgentInputDrafts, clearInputDraftState, isEmptyAgentInputDraft, normalizeAgentInputDrafts, remapAgentInputDraftMentionsForPathChange, restoreAgentInputDraftState, restoreGalleryInputDraftState, saveActiveAgentInputDrafts, saveGalleryInputDraft, syncActiveInputDraft, updateInputDraftImages } from './lib/inputDraftState'
-import { ALL_FAVORITES_COLLECTION_ID, DEFAULT_FAVORITE_COLLECTION_ID, createDefaultFavoriteCollection, deleteFavoriteCollectionState, ensureDefaultFavoriteCollection, getTaskFavoriteCollectionIds, mergeFavoriteCollections, normalizeFavoriteCollectionIds, normalizeFavoriteCollectionName, normalizeFavoriteCollections, normalizeFavoritePatch, normalizeLoadedFavoriteState, resolveDefaultFavoriteCollectionId, sameFavoriteCollectionIds } from './lib/favoriteState'
+import { ALL_FAVORITES_COLLECTION_ID, DEFAULT_FAVORITE_COLLECTION_ID, createDefaultFavoriteCollection, deleteFavoriteCollectionState, ensureDefaultFavoriteCollection, getNewTaskFavoritePatch, getTaskFavoriteCollectionIds, mergeFavoriteCollections, normalizeFavoriteCollectionIds, normalizeFavoriteCollectionName, normalizeFavoriteCollections, normalizeFavoritePatch, normalizeLoadedFavoriteState, resolveDefaultFavoriteCollectionId, sameFavoriteCollectionIds } from './lib/favoriteState'
 import { createPersistedState, mergePersistedAgentConversations, migratePersistedState, normalizePersistedState } from './lib/persistedState'
 import { addImageSizeParam, createTaskDonePatch, createTaskErrorPatch, deriveAgentImageActualParams, deriveGalleryActualParams, firstActualParams, hasActualParams, hasActualSizeParam, mapActualParamsByImage, mapRevisedPromptsByImage, markInterruptedOpenAIRunningTasks } from './lib/taskState'
 import { stripInjectedCodexCliSizePrompt } from './lib/size'
@@ -1150,9 +1151,9 @@ function usesConcurrentImageRequests(settings: AppSettings, profile: ApiProfile,
   if (n <= 1) return false
   if (profile.provider === 'openai') {
     if (profile.apiMode === 'responses') return true
-    return profile.apiMode === 'images' && (profile.codexCli || profile.streamImages)
+    return profile.apiMode === 'images' && (profile.codexCli || params.output_format === 'svg' || (profile.streamImages && params.output_format !== 'gif'))
   }
-  return profile.provider !== 'fal' && profile.codexCli && !isAsyncCustomProviderTask(settings, profile.provider, hasInputImages)
+  return profile.provider !== 'fal' && (profile.codexCli || params.output_format === 'svg') && !isAsyncCustomProviderTask(settings, profile.provider, hasInputImages)
 }
 
 export function taskHasOutputErrors(task: Pick<TaskRecord, 'outputErrors'>) {
@@ -1670,8 +1671,8 @@ export async function initStore() {
 
 /** 提交新任务 */
 export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
-  const { settings, prompt, inputImages, maskDraft, params, reusedTaskApiProfileId, reusedTaskApiProfileName, reusedTaskApiProfileMissing, reusedTaskApiModel, showToast, setConfirmDialog } =
-    useStore.getState()
+  const state = useStore.getState()
+  const { settings, prompt, inputImages, maskDraft, params, reusedTaskApiProfileId, reusedTaskApiProfileName, reusedTaskApiProfileMissing, reusedTaskApiModel, showToast, setConfirmDialog } = state
 
   const normalizedSettings = normalizeSettings(settings)
   let activeProfile = getActiveApiProfile(settings)
@@ -1707,6 +1708,13 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
 
   if (!prompt.trim()) {
     showToast('请输入提示词', 'error')
+    return
+  }
+
+  const normalizedParams = normalizeParamsForSettings(params, requestSettings, { hasInputImages: inputImages.length > 0 })
+  // 编辑接口不接受 SVG 参数；GIF 实测在编辑时也能正常生成
+  if (inputImages.length > 0 && normalizedParams.output_format === 'svg') {
+    showToast('SVG 只能用于文生图，请移除参考图或切换输出格式', 'error')
     return
   }
 
@@ -1764,8 +1772,7 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
     return
   }
 
-  const normalizedParams = normalizeParamsForSettings(params, requestSettings, { hasInputImages: orderedInputImages.length > 0 })
-  const shouldUseTransparentOutput = (normalizedParams.output_format === 'png' || normalizedParams.output_format === 'webp') && normalizedParams.transparent_output
+  const shouldUseTransparentOutput = normalizedParams.transparent_output && supportsTransparentOutput(requestSettings, activeProfile, normalizedParams.output_format)
   const taskParams = shouldUseTransparentOutput
     ? getTransparentRequestParams(normalizedParams)
     : { ...normalizedParams, transparent_output: false }
@@ -1775,7 +1782,17 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
   }
 
   const startTask = async (taskPrompt: string) => {
-    const transparentMeta = taskParams.transparent_output && activeProfile.transparentBackgroundMethod === 'local'
+    // 按点击提交时所在的收藏夹页决定；创建时该收藏夹已被删除则加入默认收藏夹
+    const favoritePatch = normalizedSettings.saveTasksToActiveFavoriteCollection
+      ? getNewTaskFavoritePatch({
+        filterFavorite: state.filterFavorite,
+        activeFavoriteCollectionId: state.activeFavoriteCollectionId,
+        favoriteCollections: useStore.getState().favoriteCollections,
+        defaultFavoriteCollectionId: useStore.getState().defaultFavoriteCollectionId,
+      })
+      : null
+    // SVG 和 GIF 无法本地抠图，只能使用接口原生透明背景
+    const transparentMeta = taskParams.transparent_output && activeProfile.transparentBackgroundMethod === 'local' && !isVectorOrAnimatedFormat(taskParams.output_format)
       ? createTransparentOutputMeta(taskPrompt)
       : null
     const task: TaskRecord = {
@@ -1798,6 +1815,7 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
       createdAt: Date.now(),
       finishedAt: null,
       elapsed: null,
+      ...favoritePatch,
     }
 
     useStore.getState().setTasks([task, ...useStore.getState().tasks])
@@ -2389,7 +2407,7 @@ async function continueRecoveredAgentRound(taskId: string) {
     }
     const roundTasks = updatedState.tasks.filter((item) => item.agentRoundId === round.id)
     const resumeParams = roundTasks.find((item) => item.params)?.params
-      ?? normalizeParamsForSettings(updatedState.params, createSettingsForApiProfile(normalizedSettings, imageProfile), { hasInputImages: round.inputImageIds.length > 0 })
+      ?? normalizeParamsForSettings(updatedState.params, createSettingsForApiProfile(normalizedSettings, imageProfile), { hasInputImages: round.inputImageIds.length > 0, agent: true })
     const maxToolCalls = Number.isFinite(normalizedSettings.agentMaxToolRounds)
       ? Math.max(1, Math.trunc(normalizedSettings.agentMaxToolRounds))
       : DEFAULT_AGENT_MAX_TOOL_ROUNDS
@@ -2506,7 +2524,7 @@ export async function submitAgentMessage() {
   const parentRoundId = editingRound ? editingRound.parentRoundId ?? null : activeLeafId
   const parentPath = parentRoundId ? getAgentRoundPath(conversation, parentRoundId) : []
   const normalizedParams = {
-    ...normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: inputImageIds.length > 0 }),
+    ...normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: inputImageIds.length > 0, agent: true }),
     n: DEFAULT_PARAMS.n,
     transparent_output: false,
   }
@@ -2611,7 +2629,7 @@ export async function regenerateAgentAssistantMessage(conversationId: string, ro
   const requestSettings = createSettingsForApiProfile(normalizedSettings, activeProfile)
   const imageRequestSettings = createSettingsForApiProfile(normalizedSettings, imageProfile)
   const normalizedParams = {
-    ...normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: inputImageIds.length > 0 }),
+    ...normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: inputImageIds.length > 0, agent: true }),
     n: DEFAULT_PARAMS.n,
     transparent_output: false,
   }
@@ -2723,7 +2741,7 @@ async function executeAgentRound(
     const resumedAssistantContent = resume ? existingAssistantMessage?.content.trim() ?? '' : ''
     const shouldStreamAssistantMessage = activeProfile.streamImages === true
     const imageRequestSettings = createSettingsForApiProfile(requestSettings, imageProfile)
-    const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0 })
+    const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0, agent: true })
     const streamingTaskIds: string[] = resume ? [...round.outputTaskIds] : []
     const taskIdByToolCallId = new Map<string, string>()
     const taskByToolCallId = new Map<string, TaskRecord>()
@@ -3043,7 +3061,7 @@ async function executeAgentRound(
       const references = await resolveReferenceImages(referenceIds)
       const toolCallId = callId || genId()
       const taskParams = {
-        ...normalizeParamsForSettings(imageParams, imageRequestSettings, { hasInputImages: references.dataUrls.length > 0 }),
+        ...normalizeParamsForSettings(imageParams, imageRequestSettings, { hasInputImages: references.dataUrls.length > 0, agent: true }),
         n: 1,
       }
 
@@ -3110,7 +3128,7 @@ async function executeAgentRound(
         const batchToolCallId = genId()
         const taskParams = requestSettings.agentApiConfigMode === 'hybrid'
           ? {
-              ...normalizeParamsForSettings(imageParams, imageRequestSettings, { hasInputImages: references.dataUrls.length > 0 }),
+              ...normalizeParamsForSettings(imageParams, imageRequestSettings, { hasInputImages: references.dataUrls.length > 0, agent: true }),
               n: 1,
             }
           : { ...imageParams, n: 1 }
@@ -3974,16 +3992,17 @@ export async function deleteFavoriteCollection(collectionId: string, deleteTasks
 
 /** 按重试方式新建任务或覆盖原任务；Agent 对话中的任务始终新建 */
 export async function retryTask(task: TaskRecord) {
-  const { settings, tasks } = useStore.getState()
+  const state = useStore.getState()
+  const { settings, tasks } = state
   const source = tasks.find((item) => item.id === task.id)
   if (!source || source.status === 'running' || source.falRecoverable || source.customRecoverable) return
   const activeProfile = getActiveApiProfile(settings)
   const normalizedParams = normalizeParamsForSettings(source.params, settings, { hasInputImages: source.inputImageIds.length > 0 })
-  const shouldUseTransparentOutput = (normalizedParams.output_format === 'png' || normalizedParams.output_format === 'webp') && normalizedParams.transparent_output
+  const shouldUseTransparentOutput = normalizedParams.transparent_output && supportsTransparentOutput(settings, activeProfile, normalizedParams.output_format)
   const taskParams = shouldUseTransparentOutput
     ? getTransparentRequestParams(normalizedParams)
     : { ...normalizedParams, transparent_output: false }
-  const transparentMeta = taskParams.transparent_output && activeProfile.transparentBackgroundMethod === 'local'
+  const transparentMeta = taskParams.transparent_output && activeProfile.transparentBackgroundMethod === 'local' && !isVectorOrAnimatedFormat(taskParams.output_format)
     ? createTransparentOutputMeta(source.prompt.trim())
     : null
   const overwrite = !isAgentTask(source) && (
@@ -3991,8 +4010,13 @@ export async function retryTask(task: TaskRecord) {
   )
   const taskId = overwrite ? source.id : genId()
   const startedAt = Date.now()
+  // 收藏夹页重试出的任务沿用原任务所在的收藏夹
+  const favoritePatch = !overwrite && settings.saveTasksToActiveFavoriteCollection && state.appMode === 'gallery'
+    ? getNewTaskFavoritePatch(state, getTaskFavoriteCollectionIds(source, state.defaultFavoriteCollectionId))
+    : null
   const newTask: TaskRecord = {
     ...(overwrite ? source : {}),
+    ...favoritePatch,
     id: taskId,
     prompt: source.prompt,
     params: taskParams,
@@ -4806,7 +4830,8 @@ export async function addImageFromFile(file: File): Promise<void> {
 
 export async function createInputImageFromFile(file: File): Promise<InputImage | null> {
   if (!file.type.startsWith('image/')) return null
-  const dataUrl = await fileToDataUrl(file)
+  // 图像接口不接受 SVG 和 GIF，加入时就转成 PNG
+  const dataUrl = await toApiInputImageDataUrl(await fileToDataUrl(file))
   const id = await storeImage(dataUrl, 'upload')
   cacheImage(id, dataUrl)
   return { id, dataUrl }
@@ -4815,9 +4840,11 @@ export async function createInputImageFromFile(file: File): Promise<InputImage |
 /** 添加图片到输入（右键菜单）—— 支持 data/blob/http URL */
 export async function addImageFromUrl(src: string): Promise<void> {
   const res = await apiFetch(src)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const blob = await res.blob()
   if (!blob.type.startsWith('image/')) throw new Error('不是有效的图片')
-  const dataUrl = await blobToDataUrl(blob)
+  // 图像接口不接受 SVG 和 GIF，加入时就转成 PNG
+  const dataUrl = await toApiInputImageDataUrl(await blobToDataUrl(blob))
   const id = await storeImage(dataUrl, 'upload')
   cacheImage(id, dataUrl)
   useStore.getState().addInputImage({ id, dataUrl })

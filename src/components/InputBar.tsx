@@ -4,10 +4,10 @@ import { deleteFavoriteCollection, useStore, submitTask, submitAgentMessage, sto
 import { DEFAULT_PARAMS, MAX_INPUT_IMAGES, type TaskRecord } from '../types'
 import { getActiveAgentRounds } from '../lib/agentConversationState'
 import { getActiveApiProfile, getAgentImageApiProfile, normalizeSettings, resolveApiProfileModel, splitModelList } from '../lib/apiProfiles'
-import { getImageGenerationModel, isGptImage25Model } from '../lib/imageModels'
+import { isVectorOrAnimatedFormat } from '../lib/imageModels'
 import { ensureImageCached, getCachedImage } from '../lib/imageCache'
 import { splitBatchPrompts } from '../lib/batchPrompts'
-import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
+import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, getParamDisabledReasons, normalizeParamsForSettings, supportsTransparentOutput } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageComments, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeCodexCliImageSize, normalizeImageSize } from '../lib/size'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
@@ -27,6 +27,7 @@ import ButtonTooltip from './input/buttonTooltip'
 import DragUploadOverlay from './input/dragUploadOverlay'
 import InputBatchBars from './input/inputBatchBars'
 import InputParamsPanel from './input/inputParamsPanel'
+import type { SelectOption } from './Select'
 
 function getFavoriteCollectionTasksForBatch(collectionId: string, tasks: TaskRecord[], defaultFavoriteCollectionId: string | null) {
   const favoriteTasks = tasks.filter((task) => task.isFavorite)
@@ -509,10 +510,16 @@ export default function InputBar() {
   const isFalProvider = activeProvider === 'fal'
   const agentAutoImageCount = appMode === 'agent'
   const moderationDisabled = isFalProvider
+  // Agent 只用位图，SVG 和 GIF 在提交时换成 PNG，参数面板按实际发送的格式显示
+  const panelParams = appMode === 'agent' && isVectorOrAnimatedFormat(params.output_format)
+    ? { ...params, output_format: 'png' as const }
+    : params
   const transparentOutputAvailable = appMode === 'gallery'
-  const showTransparentOutputControl = transparentOutputAvailable && (params.output_format === 'png' || params.output_format === 'webp')
+  const showTransparentOutputControl = transparentOutputAvailable && supportsTransparentOutput(effectiveSettings, activeProfile, params.output_format)
   const transparentOutputEnabled = transparentOutputAvailable && showTransparentOutputControl && params.transparent_output
-  const compressionDisabled = params.output_format === 'png' || isFalProvider
+  const compressionDisabled = panelParams.output_format === 'png' || isVectorOrAnimatedFormat(panelParams.output_format) || isFalProvider
+  // 不可用的参数和格式仍然显示，置灰并说明原因
+  const disabledReasons = getParamDisabledReasons(activeProfile, { hasInputImages: inputImages.length > 0, agent: agentAutoImageCount })
   const outputImageLimit = getOutputImageLimitForSettings(effectiveSettings)
   const isFalTextToImage = isFalProvider && inputImages.length === 0
   const nDraftValue = Number(nInput)
@@ -527,17 +534,13 @@ export default function InputBar() {
     ? DEFAULT_FAL_IMAGE_SIZE
     : (activeProfile.codexCli ? normalizeCodexCliImageSize(params.size) : normalizeImageSize(params.size)) || DEFAULT_PARAMS.size
 
-  const qualityOptions = [
-    ...(!isFalProvider ? [{ label: 'auto', value: 'auto' }] : []),
+  const qualityOptions: SelectOption[] = [
+    { label: 'auto', value: 'auto', disabledReason: disabledReasons.autoQuality },
     { label: 'low', value: 'low' },
     { label: 'medium', value: 'medium' },
     { label: 'high', value: 'high' },
-    ...(isGptImage25Model(getImageGenerationModel(activeProfile))
-      ? [
-          { label: 'xhigh', value: 'xhigh' },
-          { label: 'max', value: 'max' },
-        ]
-      : []),
+    { label: 'xhigh', value: 'xhigh', disabledReason: disabledReasons.extendedQuality },
+    { label: 'max', value: 'max', disabledReason: disabledReasons.extendedQuality },
   ]
   const atImageLimit = inputImages.length >= MAX_INPUT_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${MAX_INPUT_IMAGES} 张），无法继续添加` : '添加图片'
@@ -547,8 +550,9 @@ export default function InputBar() {
   }, [transparentOutputHint.hide])
   const compressionHint = useHintTooltip({ enabled: () => compressionDisabled })
   const moderationHint = useHintTooltip({ enabled: () => moderationDisabled })
-  const sizeHint = useHintTooltip({ enabled: () => isFalTextToImage || activeProfile.codexCli })
-  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli || isFalProvider })
+  const complexityHint = useHintTooltip({ enabled: () => Boolean(disabledReasons.complexity) })
+  const sizeHint = useHintTooltip({ enabled: () => Boolean(disabledReasons.autoSize) || activeProfile.codexCli })
+  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli })
   const nLimitHint = useHintTooltip({ autoHideMs: 2000 })
   const streamConcurrentHint = useHintTooltip({ enabled: () => streamConcurrentByN })
   const maskTargetImage = maskDraft
@@ -683,10 +687,12 @@ export default function InputBar() {
   useEffect(() => {
     const normalizedParams = normalizeParamsForSettings(params, effectiveSettings, { hasInputImages: inputImages.length > 0 })
     const patch = getChangedParams(params, normalizedParams)
+    // SVG 和 GIF 是画廊的选择，Agent 提交时会自行换成位图，这里不改写，切回画廊后仍然保留
+    if (appMode === 'agent' && isVectorOrAnimatedFormat(params.output_format)) delete patch.output_format
     if (Object.keys(patch).length) {
       setParams(patch)
     }
-  }, [inputImages.length, params, effectiveSettings, setParams])
+  }, [appMode, inputImages.length, params, effectiveSettings, setParams])
 
   useEffect(() => () => {
     if (imageHintTimerRef.current != null) {
@@ -1668,7 +1674,7 @@ export default function InputBar() {
 
   const renderParams = () => (
     <InputParamsPanel
-      params={params}
+      params={panelParams}
       setParams={setParams}
       activeProfile={activeProfile}
       modelOptions={modelOptions}
@@ -1690,6 +1696,9 @@ export default function InputBar() {
       commitOutputCompression={commitOutputCompression}
       moderationHint={moderationHint}
       moderationDisabled={moderationDisabled}
+      complexityHint={complexityHint}
+      disabledReasons={disabledReasons}
+      hasInputImages={inputImages.length > 0}
       agentAutoImageCount={agentAutoImageCount}
       outputImageLimit={outputImageLimit}
       nInput={nInput}

@@ -13,6 +13,7 @@ import { downloadImageEntriesAsZip, downloadImageIds, getDownloadErrorMessage, g
 import { isAgentTaskPromptPending } from '../lib/taskPromptDisplay'
 import { getImageComments, getTaskPromptText, replaceImageMentionsForApi } from '../lib/promptImageMentions'
 import { getApiProviderLabel } from '../lib/apiProfiles'
+import { isTauri } from '../lib/platform'
 import { CloseIcon, CodeIcon, CopyIcon, DownloadIcon, EditIcon, LinkIcon, TrashIcon } from './icons'
 
 import ViewportTooltip from './ViewportTooltip'
@@ -270,7 +271,7 @@ export default function DetailModal() {
   const streamPreviewLen = streamPreviewItems.length
   const currentStreamPreviewSrc = activeStreamPreviewSrc
   const streamPartialImageIds = task.streamPartialImageIds ?? []
-  const supportsTransparentOutput = task.params.output_format === 'png' || task.params.output_format === 'webp'
+  const supportsTransparentOutput = task.params.output_format !== 'jpeg'
   const transparentOutputText = task.transparentOutput || task.params.transparent_output ? 'true' : 'false'
   const currentTransparentOutputFailed = Boolean(currentOutputImageId && task.transparentOutput && task.transparentOriginalImages?.[currentOutputImageIndex] === '')
   const outputCompressionText = task.params.output_compression == null ? '未设置' : String(task.params.output_compression)
@@ -990,6 +991,15 @@ export default function DetailModal() {
                   <DetailParamValue task={task} paramKey="quality" className="font-medium" actualParams={currentActualParams} />
                 </div>
               </div>
+              {task.params.complexity !== 'auto' && (
+                <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2 min-w-0 overflow-hidden">
+                  <span className="text-gray-400 dark:text-gray-500">复杂度</span>
+                  <br />
+                  <div className="mt-0.5 overflow-x-auto hide-scrollbar whitespace-nowrap mask-edge-r pr-2">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{task.params.complexity}</span>
+                  </div>
+                </div>
+              )}
               <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2 min-w-0 overflow-hidden">
                 <span className="text-gray-400 dark:text-gray-500">格式</span>
                 <br />
@@ -1011,7 +1021,25 @@ export default function DetailModal() {
                   </div>
                 </div>
               )}
-              {task.params.output_format !== 'png' && (
+              {task.params.output_format === 'gif' && (
+                <>
+                  <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2 min-w-0 overflow-hidden">
+                    <span className="text-gray-400 dark:text-gray-500">帧数</span>
+                    <br />
+                    <div className="mt-0.5 overflow-x-auto hide-scrollbar whitespace-nowrap mask-edge-r pr-2">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{task.params.frame_count}</span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2 min-w-0 overflow-hidden">
+                    <span className="text-gray-400 dark:text-gray-500">每帧时长</span>
+                    <br />
+                    <div className="mt-0.5 overflow-x-auto hide-scrollbar whitespace-nowrap mask-edge-r pr-2">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{task.params.frame_duration_ms} ms</span>
+                    </div>
+                  </div>
+                </>
+              )}
+              {(task.params.output_format === 'jpeg' || task.params.output_format === 'webp') && (
                 <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2 min-w-0 overflow-hidden">
                   <span className="text-gray-400 dark:text-gray-500">压缩率</span>
                   <br />
@@ -1039,7 +1067,7 @@ export default function DetailModal() {
             </div>
 
             {/* 时间 */}
-            <div className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+            <div className={`text-xs text-gray-400 dark:text-gray-500 ${isTauri ? 'mb-2' : 'mb-4'}`}>
               <span>创建于 {formatTime(task.createdAt)}</span>
               {task.startedAt != null && task.startedAt > task.createdAt && (
                 <span className="relative ml-1 inline-flex align-middle">
@@ -1060,6 +1088,31 @@ export default function DetailModal() {
               )}
               {formatDuration() && <span> · 耗时 {formatDuration()}</span>}
             </div>
+
+            {/* 仅客户端：任务 ID 和图片 ID，可复制给使用命令行的 AI 工具，让它直接引用图片而不必重新上传 */}
+            {isTauri && (
+              <div className="mb-2 space-y-0.5 text-xs leading-5 text-gray-400 dark:text-gray-500">
+                {[['任务 ID', task.id], ['图片 ID', currentOutputImageId]].filter(([, id]) => id).map(([label, id]) => (
+                  <div key={label} className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)_1.5rem] items-center gap-2">
+                    <span>{label}</span>
+                    <span data-selectable-text className="min-w-0 truncate font-mono">{id}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        copyTextToClipboard(id).then(
+                          () => showToast(`${label}已复制`, 'success'),
+                          (err) => showToast(getClipboardFailureMessage(`复制${label}失败`, err), 'error'),
+                        )
+                      }}
+                      aria-label={`复制${label}`}
+                      className="flex h-5 w-6 items-center justify-center rounded hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/[0.06] dark:hover:text-gray-300 transition-colors"
+                    >
+                      <CopyIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 操作按钮 */}

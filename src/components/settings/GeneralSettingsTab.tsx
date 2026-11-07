@@ -204,6 +204,24 @@ export default function GeneralSettingsTab({
         <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">任务与下载</h4>
         <div className="block">
           <div className="mb-1 flex items-center justify-between">
+            <span className="block text-sm text-gray-600 dark:text-gray-300">在收藏夹页新建的任务自动加入当前收藏夹</span>
+            <button
+              type="button"
+              onClick={() => commitSettings({ ...draft, saveTasksToActiveFavoriteCollection: !draft.saveTasksToActiveFavoriteCollection })}
+              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.saveTasksToActiveFavoriteCollection ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+              role="switch"
+              aria-checked={draft.saveTasksToActiveFavoriteCollection}
+              aria-label="在收藏夹页新建的任务自动加入当前收藏夹"
+            >
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.saveTasksToActiveFavoriteCollection ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+            </button>
+          </div>
+          <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
+            开启后，在收藏夹页提交或重试出的任务会直接加入该收藏夹；重试时同时沿用原任务所在的收藏夹。收藏夹总览和「全部收藏」中提交的任务加入默认收藏夹。
+          </div>
+        </div>
+        <div className="block">
+          <div className="mb-1 flex items-center justify-between">
             <span className="block text-sm text-gray-600 dark:text-gray-300">复用配置时临时复用该任务的 API 配置</span>
             <button
               type="button"

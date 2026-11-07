@@ -642,6 +642,7 @@ export function normalizeApiProfile(
     transparentBackgroundMethod: !nativeTransparentBackgroundUnavailable && (record.transparentBackgroundMethod === 'api' || record.transparentBackgroundMethod === 'local')
       ? record.transparentBackgroundMethod
       : defaults.transparentBackgroundMethod,
+    svgModel: typeof record.svgModel === 'string' && record.svgModel.trim() ? record.svgModel.trim() : undefined,
     providerDrafts: normalizeProviderDrafts(record.providerDrafts, customProviderIds, nativeTransparentProviderIds),
   }
 }
@@ -793,6 +794,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     persistInputOnRestart: typeof record.persistInputOnRestart === 'boolean' ? record.persistInputOnRestart : true,
     reuseTaskApiProfileTemporarily: typeof record.reuseTaskApiProfileTemporarily === 'boolean' ? record.reuseTaskApiProfileTemporarily : false,
     alwaysShowRetryButton: typeof record.alwaysShowRetryButton === 'boolean' ? record.alwaysShowRetryButton : false,
+    saveTasksToActiveFavoriteCollection: typeof record.saveTasksToActiveFavoriteCollection === 'boolean' ? record.saveTasksToActiveFavoriteCollection : true,
     retryMode: normalizeRetryMode(record.retryMode, record.alwaysShowRetryButton === true),
     allowPromptRewrite: typeof record.allowPromptRewrite === 'boolean' ? record.allowPromptRewrite : false,
     taskCompletionNotification: typeof record.taskCompletionNotification === 'boolean' ? record.taskCompletionNotification : false,
@@ -1055,6 +1057,11 @@ function createPresetProfileId(provider: ApiProvider, record: Record<string, unk
   return id
 }
 
+// 配置内容比较忽略本地身份和默认标记，输入须已规整。
+export function getApiProfileContentKey(profile: ApiProfile): string {
+  return JSON.stringify({ ...profile, id: undefined, isDefault: undefined })
+}
+
 function getApiProfileDedupKey(profile: ApiProfile): string {
   return JSON.stringify([
     profile.provider,
@@ -1212,6 +1219,7 @@ const PRESET_PROFILE_DEPLOYMENT_KEYS = [
   'streamImages',
   'streamPartialImages',
   'transparentBackgroundMethod',
+  'svgModel',
   'providerDrafts',
 ] as const
 
@@ -1283,7 +1291,7 @@ export function mergePresetImportedSettings(
     .filter((profile) => {
       const previous = previousProfilesById.get(profile.id)
       if (!previous || sourceProfileIds.has(profile.id) || usedPresetProfileIds.has(profile.id) || modifiedProviderIds.has(profile.provider)) return false
-      return JSON.stringify({ ...profile, isDefault: undefined }) === JSON.stringify({ ...previous, isDefault: undefined })
+      return getApiProfileContentKey(profile) === getApiProfileContentKey(previous)
     })
     .map((profile) => profile.id))
 
@@ -1391,6 +1399,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   persistInputOnRestart: true,
   reuseTaskApiProfileTemporarily: false,
   alwaysShowRetryButton: false,
+  saveTasksToActiveFavoriteCollection: true,
   retryMode: 'new',
   allowPromptRewrite: false,
   taskCompletionNotification: false,

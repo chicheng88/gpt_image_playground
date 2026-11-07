@@ -317,6 +317,8 @@ export default function TaskCard({
 
   const formatDisplay = getParamDisplay(task, 'output_format')
   const showFormat = task.params.output_format !== 'png' || formatDisplay.isMismatch
+  // 接口不回传 complexity，只显示设置的值
+  const showComplexity = task.params.complexity !== 'auto'
   const showTransparentOutput = task.transparentOutput || task.params.transparent_output
 
   const nDisplay = getParamDisplay(task, 'n')
@@ -608,6 +610,12 @@ export default function TaskCard({
                 </span>
               )}
               {/* Params: only show if not default or mismatch */}
+              {showComplexity && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.04] text-xs flex-shrink-0">
+                  <span className="text-gray-400 dark:text-gray-500">复杂度</span>
+                  <span className="text-gray-600 dark:text-gray-300">{task.params.complexity}</span>
+                </span>
+              )}
               {showQuality && (
                 <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.04] text-xs flex-shrink-0">
                   <span className="text-gray-400 dark:text-gray-500">质量</span>

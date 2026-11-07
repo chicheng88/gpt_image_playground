@@ -28,6 +28,7 @@ import SketchBoardModal from './components/SketchBoardModal'
 import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import AnnouncementModal from './components/AnnouncementModal'
+import { preloadMarkdownRenderer } from './components/MarkdownRenderer'
 import { FavoriteCollectionPickerModal, FavoriteCollectionsView, ManageCollectionsModal } from './components/FavoriteCollections'
 import { showStartupNotices, type NoticeSection } from './components/startupNotice'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
@@ -55,6 +56,16 @@ export default function App() {
   useAutoUpdateCheck(autoCheckUpdate)
   // 运行中的链接导入要等启动时的预置配置写入完，否则会被启动流程覆盖
   useImportLinks(startupImportDone)
+
+  // 渲染库较大，不放进首屏；页面空闲时预加载，打开公告、更新日志或 Agent 对话时可以直接渲染
+  useEffect(() => {
+    if (!('requestIdleCallback' in window)) {
+      const timer = setTimeout(preloadMarkdownRenderer, 1_000)
+      return () => clearTimeout(timer)
+    }
+    const id = window.requestIdleCallback(preloadMarkdownRenderer, { timeout: 3_000 })
+    return () => window.cancelIdleCallback(id)
+  }, [])
 
   useEffect(() => {
     if (!isTauri) return
