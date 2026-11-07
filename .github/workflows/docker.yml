@@ -2,6 +2,7 @@ name: Build and Publish Docker Image
 
 on:
   push:
+    branches: ['main']
     tags: ['v*']
   workflow_run:
     workflows: ['Build Desktop Client']
@@ -23,8 +24,10 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # 配置了签名私钥时，推送 tag 先构建客户端，构建成功后由 workflow_run 构建镜像；未配置时推送 tag 直接构建
+          # 推送 main 分支时直接构建镜像；tag 仍按原有逻辑等待客户端构建（配置签名私钥时）
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            build=true
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/* ]]; then
             build=true
           elif [[ "$GITHUB_EVENT_NAME" == workflow_run ]]; then
             [[ -n "$SIGNING_KEY" ]] && build=true || build=false
@@ -40,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - id: version
         run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
