@@ -70,7 +70,7 @@ describe('promptImportLink', () => {
   })
 
   it('切换到地址、Key 和模型不同的已有配置时提示切换', async () => {
-    const profile = createDefaultOpenAIProfile({ id: 'saved', name: '已保存', baseUrl: 'https://saved.example.com/v1', apiKey: 'example-saved', model: 'gpt-image-2.6-sunburst' })
+    const profile = createDefaultOpenAIProfile({ id: 'saved', name: '已保存', baseUrl: 'https://saved.example.com/v1', apiKey: 'example-saved', model: 'gpt-image-2.6' })
     const settings = normalizeSettings({
       profiles: [createDefaultOpenAIProfile({ id: 'other', baseUrl: 'https://other.example.com/v1', apiKey: 'example-other', model: 'gpt-image-2' }), profile],
       activeProfileId: 'other',

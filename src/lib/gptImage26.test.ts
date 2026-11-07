@@ -39,7 +39,7 @@ afterEach(() => {
 describe('GPT Image model versions', () => {
   it('detects 2.5 and later models for xhigh quality and markup', () => {
     expect(isGptImage25PlusModel('gpt-image-2.5-flare')).toBe(true)
-    expect(isGptImage25PlusModel('gpt-image-2.6-sunburst')).toBe(true)
+    expect(isGptImage25PlusModel('gpt-image-2.6')).toBe(true)
     expect(isGptImage25PlusModel('openai/gpt-image-2.5/sunburst')).toBe(true)
     expect(isGptImage25PlusModel('gpt-image-3')).toBe(true)
     expect(isGptImage25PlusModel('gpt-image-2')).toBe(false)
@@ -94,7 +94,7 @@ describe('GPT Image 2.6 parameter compatibility', () => {
   })
 
   it('points Responses users to the image model when 2.6 params are unavailable', () => {
-    const profile = getActiveApiProfile(createSettings({ apiMode: 'responses', model: 'gpt-image-2.6-sunburst', imageGenerationModel: '' }))
+    const profile = getActiveApiProfile(createSettings({ apiMode: 'responses', model: 'gpt-image-2.6', imageGenerationModel: '' }))
     expect(getParamDisabledReasons(profile)).toMatchObject({
       complexity: '当前图像模型不支持复杂度参数',
       gif: '当前图像模型不支持此格式',
@@ -127,7 +127,7 @@ describe('GPT Image 2.6 requests', () => {
   it('uses the default SVG authoring model', async () => {
     const fetchMock = mockImageResponse()
     await callImageApi({
-      settings: createSettings({ model: 'gpt-image-2.6-sunburst' }),
+      settings: createSettings({ model: 'gpt-image-2.6' }),
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS, output_format: 'svg' },
       inputImageDataUrls: [],
@@ -169,7 +169,7 @@ describe('GPT Image 2.6 requests', () => {
   it('sends complexity and the markup layer to the Images edit API', async () => {
     const fetchMock = mockImageResponse()
     await callImageApi({
-      settings: createSettings({ model: 'gpt-image-2.6-sunburst' }),
+      settings: createSettings({ model: 'gpt-image-2.6' }),
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS, complexity: 'low' },
       inputImageDataUrls: ['data:image/png;base64,aW1hZ2U='],
@@ -193,7 +193,7 @@ describe('GPT Image 2.6 requests', () => {
       })
     })
     const inputImageDataUrls = ['data:image/png;base64,aW1hZ2U=']
-    for (const model of ['gpt-image-2.6-sunburst', 'gpt-image-2.5', 'gpt-image-2.6-sunburst']) {
+    for (const model of ['gpt-image-2.6', 'gpt-image-2.5', 'gpt-image-2.6']) {
       fetchMock.mockClear()
       await callImageApi({
         settings: createSettings({ model }),
@@ -211,7 +211,7 @@ describe('GPT Image 2.6 requests', () => {
   it('sends GIF frame settings to the Images edit API', async () => {
     const fetchMock = mockImageResponse()
     await callImageApi({
-      settings: createSettings({ model: 'gpt-image-2.6-sunburst' }),
+      settings: createSettings({ model: 'gpt-image-2.6' }),
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS, output_format: 'gif', frame_count: 4, frame_duration_ms: 120 },
       inputImageDataUrls: ['data:image/png;base64,aW1hZ2U='],
