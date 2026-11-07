@@ -1,7 +1,7 @@
 import type { ApiProfile } from '../types'
 
-// 保持分叉版的默认模型不变：上游 v0.8.6 起默认改为 gpt-image-2.6-sunburst，需要时改这一行即可
-export const DEFAULT_IMAGES_MODEL = 'gpt-image-2.5-sunburst'
+/** 新配置和默认出图使用的模型 */
+export const DEFAULT_IMAGES_MODEL = 'gpt-image-2.6-sunburst'
 /** Images API 生成 SVG 时必填的 svg.model（负责编写 SVG 的文本模型） */
 export const DEFAULT_SVG_MODEL = 'gpt-6.1-sol'
 
